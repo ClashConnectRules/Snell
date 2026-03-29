@@ -359,7 +359,14 @@ try_configure_firewall() {
 
 start_service() {
   systemctl daemon-reload
-  systemctl enable --now snell.service
+  systemctl enable snell.service >/dev/null 2>&1 || true
+
+  if systemctl is-active --quiet snell.service; then
+    log "检测到 snell.service 已在运行，执行重启以应用新配置"
+    systemctl restart snell.service
+  else
+    systemctl start snell.service
+  fi
 }
 
 get_public_ip() {
