@@ -206,16 +206,23 @@ detect_arch() {
 }
 
 install_deps() {
+  if command -v curl >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    log "依赖 curl/unzip 已存在，跳过安装"
+    return 0
+  fi
+
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
-    apt-get install -y curl unzip
+    if ! apt-get update -y; then
+      log "apt-get update 失败，尝试直接安装依赖（可能是第三方源签名问题）"
+    fi
+    apt-get install -y curl unzip || die "apt-get 安装依赖失败，请修复软件源后重试"
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl unzip
+    dnf install -y curl unzip || die "dnf 安装依赖失败"
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl unzip
+    yum install -y curl unzip || die "yum 安装依赖失败"
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache curl unzip
+    apk add --no-cache curl unzip || die "apk 安装依赖失败"
   else
     die "无法识别包管理器，请手动安装 curl 和 unzip"
   fi
