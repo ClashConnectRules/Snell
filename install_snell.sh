@@ -7,6 +7,7 @@ VERSION=""
 SNELL_MAJOR=""
 ACTION=""
 REMOVE_SCRIPT="false"
+PROFILE_NAME=""
 PORT=""
 PORT_SET_BY_USER="false"
 PSK=""
@@ -19,6 +20,14 @@ BIN_PATH="/usr/local/bin/snell-server"
 SERVICE_PATH="/etc/systemd/system/snell.service"
 VERSION_MARK_PATH="/etc/snell/version"
 SCRIPT_UPDATE_URL="https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh"
+PROFILES_DIR="/etc/snell/profiles"
+PROFILE_TEMPLATE_SERVICE_PATH="/etc/systemd/system/snell@.service"
+PROFILE_VERSION_DIR="/etc/snell/profile-versions"
+BBR_SYSCTL_PATH="/etc/sysctl.d/99-snell-bbr.conf"
+DOCKER_DIR="/etc/snell/docker"
+DOCKER_CONFIG_PATH="/etc/snell/docker/snell-server.conf"
+DOCKER_COMPOSE_PATH="/etc/snell/docker/compose.yaml"
+DOCKER_CONTAINER_NAME="snell-docker"
 
 show_help() {
   cat <<'EOF'
@@ -29,8 +38,9 @@ Snell 一键安装脚本（Linux + systemd）
   # 若检测到已安装且未指定 --action，默认走 update
 
 选项:
-  --action <install|update|uninstall|config|restart|status|script-update>
-                              选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本）
+  --action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status>
+                              选择操作（安装/更新/卸载/配置/重启/状态/脚本更新/多用户/BBR/Docker）
+  --name <profile_name>       Profile 名称（多用户动作时使用）
   --remove-script             卸载后删除当前脚本文件
   --major <4|5>               选择安装主版本（推荐）
   --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
@@ -51,6 +61,14 @@ Snell 一键安装脚本（Linux + systemd）
   sudo bash install_snell.sh --action restart
   sudo bash install_snell.sh --action status
   sudo bash install_snell.sh --action script-update
+  sudo bash install_snell.sh --action profile-add --name hk-a --major 5 --port 31001
+  sudo bash install_snell.sh --action profile-list
+  sudo bash install_snell.sh --action profile-remove --name hk-a
+  sudo bash install_snell.sh --action bbr-status
+  sudo bash install_snell.sh --action bbr-enable
+  sudo bash install_snell.sh --action docker-deploy --major 5 --port 31001
+  sudo bash install_snell.sh --action docker-status
+  sudo bash install_snell.sh --action docker-remove
   sudo bash install_snell.sh --major 4
   sudo bash install_snell.sh --major 5 --port 22333
   sudo bash install_snell.sh --port 22333 --ipv6 false
@@ -79,6 +97,8 @@ parse_args() {
     case "$1" in
       --action)
         ACTION="${2:-}"; shift 2 ;;
+      --name)
+        PROFILE_NAME="${2:-}"; shift 2 ;;
       --remove-script)
         REMOVE_SCRIPT="true"; shift ;;
       --major)
@@ -110,8 +130,8 @@ resolve_action_choice() {
 
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
-      install|update|uninstall|config|restart|status|script-update) return 0 ;;
-      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update" ;;
+      install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status) return 0 ;;
+      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status" ;;
     esac
   fi
 
@@ -140,8 +160,17 @@ resolve_action_choice() {
     printf '  5) 重启 Snell 服务\n'
     printf '  6) 查看 Snell 状态\n'
     printf '  7) 更新本脚本\n'
+    printf '  8) 多用户: 新增 Profile 端口\n'
+    printf '  9) 多用户: 查看 Profile 列表\n'
+    printf ' 10) 多用户: 删除 Profile\n'
+    printf ' 11) BBR: 启用\n'
+    printf ' 12) BBR: 关闭\n'
+    printf ' 13) BBR: 状态\n'
+    printf ' 14) Docker: 部署 Snell\n'
+    printf ' 15) Docker: 移除 Snell\n'
+    printf ' 16) Docker: 查看状态\n'
     while true; do
-      read -r -p "请输入 1/2/3/4/5/6/7 ${prompt_hint}: " choice
+      read -r -p "请输入 1-16 ${prompt_hint}: " choice
       choice="${choice:-$default_choice}"
       case "$choice" in
         1)
@@ -172,8 +201,44 @@ resolve_action_choice() {
           ACTION="script-update"
           break
           ;;
+        8)
+          ACTION="profile-add"
+          break
+          ;;
+        9)
+          ACTION="profile-list"
+          break
+          ;;
+        10)
+          ACTION="profile-remove"
+          break
+          ;;
+        11)
+          ACTION="bbr-enable"
+          break
+          ;;
+        12)
+          ACTION="bbr-disable"
+          break
+          ;;
+        13)
+          ACTION="bbr-status"
+          break
+          ;;
+        14)
+          ACTION="docker-deploy"
+          break
+          ;;
+        15)
+          ACTION="docker-remove"
+          break
+          ;;
+        16)
+          ACTION="docker-status"
+          break
+          ;;
         *)
-          printf '输入无效，请输入 1、2、3、4、5、6 或 7。\n'
+          printf '输入无效，请输入 1 到 16。\n'
           ;;
       esac
     done
@@ -283,7 +348,7 @@ random_port() {
 }
 
 resolve_install_port() {
-  if [[ "$ACTION" != "install" ]]; then
+  if [[ "$ACTION" != "install" && "$ACTION" != "profile-add" && "$ACTION" != "docker-deploy" ]]; then
     return 0
   fi
 
@@ -307,10 +372,16 @@ resolve_install_port() {
 
 config_get_value() {
   local key="$1"
-  if [[ ! -f "$CONFIG_PATH" ]]; then
+  config_get_value_from_file "$CONFIG_PATH" "$key"
+}
+
+config_get_value_from_file() {
+  local file="$1"
+  local key="$2"
+  if [[ ! -f "$file" ]]; then
     return 0
   fi
-  sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" "$CONFIG_PATH" | head -n 1
+  sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" "$file" | head -n 1
 }
 
 get_installed_major() {
@@ -325,6 +396,58 @@ get_installed_major() {
     esac
   fi
   echo "unknown"
+}
+
+profile_name_valid() {
+  local name="$1"
+  [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]]
+}
+
+resolve_profile_name() {
+  if [[ -n "$PROFILE_NAME" ]]; then
+    profile_name_valid "$PROFILE_NAME" || die "Profile 名称仅支持字母/数字/_/-"
+    return 0
+  fi
+
+  if [[ -t 0 ]]; then
+    local input_name
+    read -r -p "请输入 Profile 名称（字母/数字/_/-）: " input_name
+    PROFILE_NAME="${input_name:-}"
+    [[ -n "$PROFILE_NAME" ]] || die "Profile 名称不能为空"
+    profile_name_valid "$PROFILE_NAME" || die "Profile 名称仅支持字母/数字/_/-"
+    return 0
+  fi
+
+  die "请通过 --name 指定 Profile 名称"
+}
+
+profile_conf_path() {
+  local name="$1"
+  echo "${PROFILES_DIR}/${name}.conf"
+}
+
+profile_version_path() {
+  local name="$1"
+  echo "${PROFILE_VERSION_DIR}/${name}.version"
+}
+
+ensure_profile_template_service() {
+  cat > "$PROFILE_TEMPLATE_SERVICE_PATH" <<EOF
+[Unit]
+Description=Snell Profile Service (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${BIN_PATH} -c ${PROFILES_DIR}/%i.conf
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=512000
+
+[Install]
+WantedBy=multi-user.target
+EOF
 }
 
 detect_arch() {
@@ -420,9 +543,10 @@ download_and_install_binary() {
   rm -f "$tmp_zip" /tmp/snell-server
 }
 
-write_config() {
+write_config_file() {
+  local target_path="$1"
   local cfg_dir
-  cfg_dir="$(dirname "$CONFIG_PATH")"
+  cfg_dir="$(dirname "$target_path")"
   mkdir -p "$cfg_dir"
 
   {
@@ -436,9 +560,13 @@ write_config() {
     if [[ -n "$EGRESS_INTERFACE" ]]; then
       echo "egress-interface = ${EGRESS_INTERFACE}"
     fi
-  } > "$CONFIG_PATH"
+  } > "$target_path"
 
-  chmod 600 "$CONFIG_PATH"
+  chmod 600 "$target_path"
+}
+
+write_config() {
+  write_config_file "$CONFIG_PATH"
 }
 
 write_service() {
@@ -791,6 +919,316 @@ run_script_update_flow() {
   log "脚本更新完成: ${script_self}"
 }
 
+run_profile_add_flow() {
+  local conf_path version_path pub_ip region_tag node_name
+
+  validate_args
+  resolve_profile_name
+  command -v systemctl >/dev/null 2>&1 || die "profile-add 需要 systemd/systemctl"
+  conf_path="$(profile_conf_path "$PROFILE_NAME")"
+  version_path="$(profile_version_path "$PROFILE_NAME")"
+
+  [[ ! -f "$conf_path" ]] || die "Profile 已存在: ${PROFILE_NAME}"
+
+  log "创建 Profile: ${PROFILE_NAME}"
+  install_deps
+  generate_psk
+  download_and_install_binary
+
+  write_config_file "$conf_path"
+  mkdir -p "$PROFILE_VERSION_DIR"
+  printf '%s\n' "$VERSION" > "$version_path"
+  chmod 600 "$version_path" || true
+
+  ensure_profile_template_service
+  systemctl daemon-reload
+  systemctl enable --now "snell@${PROFILE_NAME}.service"
+
+  try_configure_firewall
+
+  pub_ip="$(get_public_ip)"
+  if [[ -z "$pub_ip" ]]; then
+    pub_ip="<你的服务器IP>"
+  fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+  node_name="${region_tag}-${PROFILE_NAME}-snellv${SNELL_MAJOR}"
+
+  cat <<EOF
+
+========================================
+Profile 创建完成
+========================================
+Profile: ${PROFILE_NAME}
+版本: v${VERSION}
+配置文件: ${conf_path}
+端口: ${PORT}
+PSK: ${PSK}
+服务:
+  systemctl status snell@${PROFILE_NAME}.service --no-pager
+
+节点示例:
+  ${node_name} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=${SNELL_MAJOR}, reuse=true, tfo=true
+EOF
+}
+
+run_profile_list_flow() {
+  local pub_ip region_tag found conf name listen port psk ver major status node_name version_path has_systemctl
+  found="false"
+  has_systemctl="false"
+  if command -v systemctl >/dev/null 2>&1; then
+    has_systemctl="true"
+  fi
+  pub_ip="$(get_public_ip)"
+  if [[ -z "$pub_ip" ]]; then
+    pub_ip="<你的服务器IP>"
+  fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+
+  echo
+  echo "========================================"
+  echo "Snell Profiles"
+  echo "========================================"
+
+  if [[ ! -d "$PROFILES_DIR" ]]; then
+    echo "未找到 Profile 目录: ${PROFILES_DIR}"
+    return 0
+  fi
+
+  for conf in "$PROFILES_DIR"/*.conf; do
+    [[ -e "$conf" ]] || continue
+    found="true"
+    name="$(basename "$conf" .conf)"
+    listen="$(config_get_value_from_file "$conf" "listen")"
+    psk="$(config_get_value_from_file "$conf" "psk")"
+    port="${listen##*:}"
+    ver=""
+    version_path="$(profile_version_path "$name")"
+    if [[ -f "$version_path" ]]; then
+      ver="$(tr -d '[:space:]' < "$version_path")"
+    fi
+    case "$ver" in
+      4.*|4) major="4" ;;
+      5.*|5) major="5" ;;
+      *) major="unknown" ;;
+    esac
+    if [[ "$has_systemctl" == "true" ]] && systemctl is-active --quiet "snell@${name}.service"; then
+      status="active"
+    else
+      status="inactive"
+    fi
+    node_name="${region_tag}-${name}-snellv${major}"
+
+    echo "Profile: ${name}"
+    echo "  状态: ${status}"
+    echo "  端口: ${port}"
+    echo "  版本: ${ver:-unknown}"
+    echo "  节点: ${node_name} = snell, ${pub_ip}, ${port}, psk=${psk}, version=${major}, reuse=true, tfo=true"
+    echo
+  done
+
+  if [[ "$found" != "true" ]]; then
+    echo "当前没有 Profile。可用命令:"
+    echo "  bash install_snell.sh --action profile-add --name hk-a --major 5 --port 31001"
+  fi
+}
+
+run_profile_remove_flow() {
+  local conf_path version_path has_systemctl
+  has_systemctl="false"
+  if command -v systemctl >/dev/null 2>&1; then
+    has_systemctl="true"
+  fi
+  resolve_profile_name
+  conf_path="$(profile_conf_path "$PROFILE_NAME")"
+  version_path="$(profile_version_path "$PROFILE_NAME")"
+
+  if [[ "$has_systemctl" == "true" ]]; then
+    if [[ ! -f "$conf_path" ]] && ! systemctl list-unit-files | grep -Eq "^snell@${PROFILE_NAME}\\.service"; then
+      die "Profile 不存在: ${PROFILE_NAME}"
+    fi
+  elif [[ ! -f "$conf_path" ]]; then
+    die "Profile 不存在: ${PROFILE_NAME}"
+  fi
+
+  if [[ "$has_systemctl" == "true" ]] && systemctl list-unit-files | grep -Eq "^snell@${PROFILE_NAME}\\.service"; then
+    systemctl stop "snell@${PROFILE_NAME}.service" || true
+    systemctl disable "snell@${PROFILE_NAME}.service" || true
+  fi
+
+  rm -f "$conf_path" "$version_path"
+  cleanup_empty_parent "$PROFILES_DIR"
+  cleanup_empty_parent "$PROFILE_VERSION_DIR"
+  if [[ "$has_systemctl" == "true" ]]; then
+    systemctl daemon-reload || true
+  fi
+
+  log "Profile 已删除: ${PROFILE_NAME}"
+}
+
+run_bbr_status_flow() {
+  local current_cc available_cc current_qdisc
+  current_cc="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
+  available_cc="$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || echo unknown)"
+  current_qdisc="$(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)"
+
+  cat <<EOF
+
+========================================
+BBR 状态
+========================================
+当前拥塞算法: ${current_cc}
+可用拥塞算法: ${available_cc}
+当前队列算法: ${current_qdisc}
+配置文件: ${BBR_SYSCTL_PATH}
+EOF
+}
+
+run_bbr_enable_flow() {
+  local available_cc
+  command -v sysctl >/dev/null 2>&1 || die "未找到 sysctl，无法配置 BBR"
+
+  available_cc="$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)"
+  if ! echo "$available_cc" | grep -qw bbr; then
+    modprobe tcp_bbr 2>/dev/null || true
+    available_cc="$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)"
+  fi
+  echo "$available_cc" | grep -qw bbr || die "当前内核不支持 BBR"
+
+  cat > "$BBR_SYSCTL_PATH" <<EOF
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+EOF
+
+  sysctl -w net.core.default_qdisc=fq >/dev/null || true
+  sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null || true
+  sysctl --system >/dev/null || true
+  log "BBR 已启用"
+  run_bbr_status_flow
+}
+
+run_bbr_disable_flow() {
+  command -v sysctl >/dev/null 2>&1 || die "未找到 sysctl，无法配置拥塞算法"
+
+  rm -f "$BBR_SYSCTL_PATH"
+  sysctl -w net.ipv4.tcp_congestion_control=cubic >/dev/null || true
+  sysctl -w net.core.default_qdisc=fq_codel >/dev/null || true
+  sysctl --system >/dev/null || true
+  log "BBR 配置已关闭（已切回 cubic/fq_codel）"
+  run_bbr_status_flow
+}
+
+docker_require() {
+  command -v docker >/dev/null 2>&1 || die "未检测到 docker，请先安装 Docker"
+  docker info >/dev/null 2>&1 || die "Docker daemon 不可用，请先启动 Docker"
+}
+
+docker_compose_up() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DOCKER_COMPOSE_PATH" up -d
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose -f "$DOCKER_COMPOSE_PATH" up -d
+  else
+    die "未检测到 docker compose，请安装 Docker Compose"
+  fi
+}
+
+docker_compose_down() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$DOCKER_COMPOSE_PATH" down
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose -f "$DOCKER_COMPOSE_PATH" down
+  else
+    docker rm -f "$DOCKER_CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
+}
+
+run_docker_deploy_flow() {
+  local pub_ip region_tag node_name
+
+  validate_args
+  install_deps
+  generate_psk
+  download_and_install_binary
+
+  mkdir -p "$DOCKER_DIR"
+  write_config_file "$DOCKER_CONFIG_PATH"
+  write_version_marker
+
+  cat > "$DOCKER_COMPOSE_PATH" <<EOF
+services:
+  snell:
+    image: alpine:3.20
+    container_name: ${DOCKER_CONTAINER_NAME}
+    network_mode: host
+    restart: unless-stopped
+    command: ["/snell-server", "-c", "/etc/snell/snell-server.conf"]
+    volumes:
+      - ${BIN_PATH}:/snell-server:ro
+      - ${DOCKER_CONFIG_PATH}:/etc/snell/snell-server.conf:ro
+EOF
+
+  docker_require
+
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet snell.service; then
+    log "检测到原生 snell.service 正在运行，先停止以避免端口冲突"
+    systemctl stop snell.service || true
+  fi
+
+  docker_compose_up
+  try_configure_firewall
+
+  pub_ip="$(get_public_ip)"
+  if [[ -z "$pub_ip" ]]; then
+    pub_ip="<你的服务器IP>"
+  fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+  node_name="${region_tag}-snellv${SNELL_MAJOR}"
+
+  cat <<EOF
+
+========================================
+Docker 模式部署完成
+========================================
+版本: v${VERSION}
+容器名: ${DOCKER_CONTAINER_NAME}
+Compose 文件: ${DOCKER_COMPOSE_PATH}
+配置文件: ${DOCKER_CONFIG_PATH}
+端口: ${PORT}
+PSK: ${PSK}
+节点示例:
+  ${node_name} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=${SNELL_MAJOR}, reuse=true, tfo=true
+EOF
+}
+
+run_docker_remove_flow() {
+  local answer
+  docker_require
+  docker_compose_down
+
+  if [[ -t 0 ]]; then
+    read -r -p "是否删除 Docker 配置目录 ${DOCKER_DIR} ? [y/N]: " answer
+    case "${answer:-N}" in
+      y|Y|yes|YES)
+        rm -rf "$DOCKER_DIR"
+        log "已删除 Docker 配置目录: ${DOCKER_DIR}"
+        ;;
+      *)
+        log "已保留 Docker 配置目录: ${DOCKER_DIR}"
+        ;;
+    esac
+  fi
+}
+
+run_docker_status_flow() {
+  docker_require
+  docker ps -a --filter "name=^/${DOCKER_CONTAINER_NAME}$"
+  if [[ -f "$DOCKER_COMPOSE_PATH" ]]; then
+    echo
+    echo "Compose 文件: ${DOCKER_COMPOSE_PATH}"
+    echo "配置文件: ${DOCKER_CONFIG_PATH}"
+  fi
+}
+
 confirm_uninstall() {
   if [[ -t 0 ]]; then
     local answer
@@ -834,6 +1272,18 @@ run_uninstall_flow() {
     rm -f "$SERVICE_PATH"
     log "已删除服务文件: $SERVICE_PATH"
   fi
+  if [[ -f "$PROFILE_TEMPLATE_SERVICE_PATH" ]]; then
+    rm -f "$PROFILE_TEMPLATE_SERVICE_PATH"
+    log "已删除 Profile 模板服务: $PROFILE_TEMPLATE_SERVICE_PATH"
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    while IFS= read -r unit_name; do
+      unit_name="${unit_name##* }"
+      [[ -n "$unit_name" ]] || continue
+      systemctl stop "$unit_name" || true
+      systemctl disable "$unit_name" || true
+    done < <(systemctl list-unit-files --type=service | awk '/^snell@.*\.service/{print $1}')
+  fi
   if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
   fi
@@ -843,6 +1293,10 @@ run_uninstall_flow() {
     log "已删除配置文件: $CONFIG_PATH"
   fi
   cleanup_empty_parent "$cfg_dir"
+  rm -rf "$PROFILES_DIR" "$PROFILE_VERSION_DIR"
+  rm -f "$VERSION_MARK_PATH"
+  rm -f "$BBR_SYSCTL_PATH"
+  rm -rf "$DOCKER_DIR"
 
   if [[ -f "$BIN_PATH" ]]; then
     rm -f "$BIN_PATH"
@@ -887,10 +1341,10 @@ main() {
   need_root
   resolve_action_choice
 
-  if [[ "$ACTION" == "install" || "$ACTION" == "update" ]]; then
+  if [[ "$ACTION" == "install" || "$ACTION" == "update" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
     resolve_version_choice
   fi
-  if [[ "$ACTION" == "install" ]]; then
+  if [[ "$ACTION" == "install" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
     resolve_install_port
   fi
 
@@ -902,6 +1356,15 @@ main() {
     restart) run_restart_flow ;;
     status) run_status_flow ;;
     script-update) run_script_update_flow ;;
+    profile-add) run_profile_add_flow ;;
+    profile-list) run_profile_list_flow ;;
+    profile-remove) run_profile_remove_flow ;;
+    bbr-enable) run_bbr_enable_flow ;;
+    bbr-disable) run_bbr_disable_flow ;;
+    bbr-status) run_bbr_status_flow ;;
+    docker-deploy) run_docker_deploy_flow ;;
+    docker-remove) run_docker_remove_flow ;;
+    docker-status) run_docker_status_flow ;;
     *) die "未知操作: $ACTION" ;;
   esac
 }

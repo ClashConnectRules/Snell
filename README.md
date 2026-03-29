@@ -38,6 +38,9 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 - Update mode keeps existing config and backs up previous binary
 - Node name format uses IP region prefix: `<region>-snellv4` / `<region>-snellv5`
 - Built-in management actions: `config`, `restart`, `status`, `script-update`
+- Profile-based multi-user port management: `profile-add`, `profile-list`, `profile-remove`
+- BBR switches: `bbr-enable`, `bbr-disable`, `bbr-status`
+- Docker deployment mode: `docker-deploy`, `docker-remove`, `docker-status`
 
 ## Supported Versions and Architectures
 
@@ -138,6 +141,54 @@ Update this script itself:
 sudo bash install_snell.sh --action script-update
 ```
 
+Add a profile user/port:
+
+```bash
+sudo bash install_snell.sh --action profile-add --name hk-a --major 5 --port 31001
+```
+
+List all profile users:
+
+```bash
+sudo bash install_snell.sh --action profile-list
+```
+
+Remove a profile user:
+
+```bash
+sudo bash install_snell.sh --action profile-remove --name hk-a
+```
+
+Enable BBR:
+
+```bash
+sudo bash install_snell.sh --action bbr-enable
+```
+
+Check BBR status:
+
+```bash
+sudo bash install_snell.sh --action bbr-status
+```
+
+Deploy in Docker mode:
+
+```bash
+sudo bash install_snell.sh --action docker-deploy --major 5 --port 31001
+```
+
+Show Docker mode status:
+
+```bash
+sudo bash install_snell.sh --action docker-status
+```
+
+Remove Docker mode:
+
+```bash
+sudo bash install_snell.sh --action docker-remove
+```
+
 Pin exact version:
 
 ```bash
@@ -148,8 +199,9 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## Arguments
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update>
+--action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status>
                           Select operation
+--name <profile_name>       Profile name for profile actions
 --remove-script             Delete current script after uninstall
 --major <4|5>               Select major version
 --version <ver>             Exact version (e.g. 4.1.1 / 5.0.1)

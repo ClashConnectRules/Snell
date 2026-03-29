@@ -38,6 +38,9 @@
 - 更新模式保留原配置，并备份旧二进制
 - 节点名统一为 IP 地区前缀：`<region>-snellv4` / `<region>-snellv5`
 - 内置管理动作：`config`、`restart`、`status`、`script-update`
+- Profile 化多用户端口管理：`profile-add`、`profile-list`、`profile-remove`
+- BBR 开关：`bbr-enable`、`bbr-disable`、`bbr-status`
+- Docker 部署模式：`docker-deploy`、`docker-remove`、`docker-status`
 
 ## 支持版本与架构
 
@@ -138,6 +141,54 @@ sudo bash install_snell.sh --action status
 sudo bash install_snell.sh --action script-update
 ```
 
+新增 Profile 用户端口:
+
+```bash
+sudo bash install_snell.sh --action profile-add --name hk-a --major 5 --port 31001
+```
+
+查看 Profile 列表:
+
+```bash
+sudo bash install_snell.sh --action profile-list
+```
+
+删除 Profile:
+
+```bash
+sudo bash install_snell.sh --action profile-remove --name hk-a
+```
+
+启用 BBR:
+
+```bash
+sudo bash install_snell.sh --action bbr-enable
+```
+
+查看 BBR 状态:
+
+```bash
+sudo bash install_snell.sh --action bbr-status
+```
+
+Docker 模式部署:
+
+```bash
+sudo bash install_snell.sh --action docker-deploy --major 5 --port 31001
+```
+
+查看 Docker 状态:
+
+```bash
+sudo bash install_snell.sh --action docker-status
+```
+
+移除 Docker 模式:
+
+```bash
+sudo bash install_snell.sh --action docker-remove
+```
+
 指定精确版本:
 
 ```bash
@@ -148,8 +199,9 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## 参数说明
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update>
-                          选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本）
+--action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status>
+                          选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本/多用户/BBR/Docker）
+--name <profile_name>       Profile 名称（多用户动作时使用）
 --remove-script             卸载后删除当前脚本文件
 --major <4|5>               选择主版本
 --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
