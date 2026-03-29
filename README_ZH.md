@@ -126,7 +126,7 @@ sudo bash install_snell.sh --action update --version 5.0.1
 --remove-script             卸载后删除当前脚本文件
 --major <4|5>               选择主版本
 --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
---port <port>               监听端口，默认 6160
+--port <port>               监听端口（安装时默认随机）
 --psk <psk>                 指定 PSK（不传则自动生成）
 --ipv6 <true|false>         是否启用 IPv6，默认 false
 --dns "<dns1,dns2>"         可选 DNS 参数

@@ -126,7 +126,7 @@ sudo bash install_snell.sh --action update --version 5.0.1
 --remove-script             Delete current script after uninstall
 --major <4|5>               Select major version
 --version <ver>             Exact version (e.g. 4.1.1 / 5.0.1)
---port <port>               Listen port, default 6160
+--port <port>               Listen port (random by default on install)
 --psk <psk>                 Pre-shared key (auto-generated if omitted)
 --ipv6 <true|false>         Enable IPv6, default false
 --dns "<dns1,dns2>"         Optional DNS parameter

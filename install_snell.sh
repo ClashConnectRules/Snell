@@ -7,7 +7,8 @@ VERSION=""
 SNELL_MAJOR=""
 ACTION=""
 REMOVE_SCRIPT="false"
-PORT="6160"
+PORT=""
+PORT_SET_BY_USER="false"
 PSK=""
 IPV6="false"
 DNS_SERVERS=""
@@ -30,7 +31,7 @@ Snell 一键安装脚本（Linux + systemd）
   --remove-script             卸载后删除当前脚本文件
   --major <4|5>               选择安装主版本（推荐）
   --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
-  --port <port>               监听端口，默认: 6160
+  --port <port>               监听端口（安装时不传则随机）
   --psk <psk>                 指定预共享密钥（不传则自动生成）
   --ipv6 <true|false>         是否启用 IPv6，默认: false
   --dns "<dns1,dns2>"         可选 DNS 参数（v4.1+ 支持）
@@ -78,7 +79,7 @@ parse_args() {
       --version)
         VERSION="${2:-}"; shift 2 ;;
       --port)
-        PORT="${2:-}"; shift 2 ;;
+        PORT="${2:-}"; PORT_SET_BY_USER="true"; shift 2 ;;
       --psk)
         PSK="${2:-}"; shift 2 ;;
       --ipv6)
@@ -218,13 +219,63 @@ validate_args() {
     esac
   fi
 
-  [[ "$PORT" =~ ^[0-9]+$ ]] || die "--port 必须为数字"
-  (( PORT >= 1 && PORT <= 65535 )) || die "--port 必须在 1-65535 之间"
+  if [[ -n "$PORT" ]]; then
+    [[ "$PORT" =~ ^[0-9]+$ ]] || die "--port 必须为数字"
+    (( PORT >= 1 && PORT <= 65535 )) || die "--port 必须在 1-65535 之间"
+  fi
   [[ "$IPV6" == "true" || "$IPV6" == "false" ]] || die "--ipv6 仅支持 true 或 false"
 
   if [[ "$SNELL_MAJOR" == "4" && -n "$EGRESS_INTERFACE" ]]; then
     die "--egress-interface 仅适用于 Snell v5"
   fi
+}
+
+is_port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -lntu 2>/dev/null | awk 'NR>1{print $5}' | grep -E -q "(^|[:.])${port}$"
+    return $?
+  fi
+  return 1
+}
+
+random_port() {
+  local p i
+  for i in $(seq 1 200); do
+    if command -v shuf >/dev/null 2>&1; then
+      p="$(shuf -i 10000-65535 -n 1)"
+    else
+      p="$(( (RANDOM % 55536) + 10000 ))"
+    fi
+    if ! is_port_in_use "$p"; then
+      echo "$p"
+      return 0
+    fi
+  done
+  echo "6160"
+}
+
+resolve_install_port() {
+  if [[ "$ACTION" != "install" ]]; then
+    return 0
+  fi
+
+  if [[ "$PORT_SET_BY_USER" == "true" ]]; then
+    return 0
+  fi
+
+  if [[ -t 0 ]]; then
+    local input_port
+    read -r -p "请输入监听端口（回车使用随机端口）: " input_port
+    if [[ -n "${input_port:-}" ]]; then
+      PORT="$input_port"
+      PORT_SET_BY_USER="true"
+      return 0
+    fi
+  fi
+
+  PORT="$(random_port)"
+  log "未指定端口，已自动选择随机端口: ${PORT}"
 }
 
 detect_arch() {
@@ -473,6 +524,10 @@ run_update_flow() {
 
   [[ -f "$CONFIG_PATH" ]] || die "未找到配置文件 ${CONFIG_PATH}，请先执行安装流程"
 
+  if [[ "$PORT_SET_BY_USER" == "true" ]]; then
+    log "update 模式不会修改端口，已忽略 --port=${PORT}"
+  fi
+
   validate_args
   log "已选择更新到 Snell v${VERSION}"
   log "安装依赖"
@@ -610,6 +665,7 @@ main() {
 
   if [[ "$ACTION" != "uninstall" ]]; then
     resolve_version_choice
+    resolve_install_port
   fi
 
   case "$ACTION" in
