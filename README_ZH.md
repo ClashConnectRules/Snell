@@ -37,6 +37,7 @@
 - 自动尝试放行防火墙（`ufw` / `firewalld`）
 - 更新模式保留原配置，并备份旧二进制
 - 节点名统一为 IP 地区前缀：`<region>-snellv4` / `<region>-snellv5`
+- 内置管理动作：`config`、`restart`、`status`、`script-update`
 
 ## 支持版本与架构
 
@@ -113,6 +114,30 @@ sudo bash install_snell.sh --action uninstall
 sudo bash install_snell.sh --action uninstall --remove-script
 ```
 
+查看当前配置:
+
+```bash
+sudo bash install_snell.sh --action config
+```
+
+重启 Snell 服务:
+
+```bash
+sudo bash install_snell.sh --action restart
+```
+
+查看 Snell 状态:
+
+```bash
+sudo bash install_snell.sh --action status
+```
+
+更新本脚本:
+
+```bash
+sudo bash install_snell.sh --action script-update
+```
+
 指定精确版本:
 
 ```bash
@@ -123,7 +148,8 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## 参数说明
 
 ```text
---action <install|update|uninstall>  选择操作（安装/更新/卸载）
+--action <install|update|uninstall|config|restart|status|script-update>
+                          选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本）
 --remove-script             卸载后删除当前脚本文件
 --major <4|5>               选择主版本
 --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）

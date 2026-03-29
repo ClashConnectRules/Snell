@@ -17,6 +17,8 @@ SKIP_FIREWALL="false"
 CONFIG_PATH="/etc/snell/snell-server.conf"
 BIN_PATH="/usr/local/bin/snell-server"
 SERVICE_PATH="/etc/systemd/system/snell.service"
+VERSION_MARK_PATH="/etc/snell/version"
+SCRIPT_UPDATE_URL="https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh"
 
 show_help() {
   cat <<'EOF'
@@ -27,7 +29,8 @@ Snell 一键安装脚本（Linux + systemd）
   # 若检测到已安装且未指定 --action，默认走 update
 
 选项:
-  --action <install|update|uninstall>  选择操作（安装/更新/卸载）
+  --action <install|update|uninstall|config|restart|status|script-update>
+                              选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本）
   --remove-script             卸载后删除当前脚本文件
   --major <4|5>               选择安装主版本（推荐）
   --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
@@ -44,6 +47,10 @@ Snell 一键安装脚本（Linux + systemd）
   sudo bash install_snell.sh --action update --major 5
   sudo bash install_snell.sh --action uninstall
   sudo bash install_snell.sh --action uninstall --remove-script
+  sudo bash install_snell.sh --action config
+  sudo bash install_snell.sh --action restart
+  sudo bash install_snell.sh --action status
+  sudo bash install_snell.sh --action script-update
   sudo bash install_snell.sh --major 4
   sudo bash install_snell.sh --major 5 --port 22333
   sudo bash install_snell.sh --port 22333 --ipv6 false
@@ -103,8 +110,8 @@ resolve_action_choice() {
 
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
-      install|update|uninstall) return 0 ;;
-      *) die "--action 仅支持 install、update 或 uninstall" ;;
+      install|update|uninstall|config|restart|status|script-update) return 0 ;;
+      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update" ;;
     esac
   fi
 
@@ -129,8 +136,12 @@ resolve_action_choice() {
     printf '  1) 安装 Snell\n'
     printf '  2) 更新 Snell（保留现有配置）\n'
     printf '  3) 卸载 Snell（删除服务与配置）\n'
+    printf '  4) 查看当前配置\n'
+    printf '  5) 重启 Snell 服务\n'
+    printf '  6) 查看 Snell 状态\n'
+    printf '  7) 更新本脚本\n'
     while true; do
-      read -r -p "请输入 1/2/3 ${prompt_hint}: " choice
+      read -r -p "请输入 1/2/3/4/5/6/7 ${prompt_hint}: " choice
       choice="${choice:-$default_choice}"
       case "$choice" in
         1)
@@ -145,8 +156,24 @@ resolve_action_choice() {
           ACTION="uninstall"
           break
           ;;
+        4)
+          ACTION="config"
+          break
+          ;;
+        5)
+          ACTION="restart"
+          break
+          ;;
+        6)
+          ACTION="status"
+          break
+          ;;
+        7)
+          ACTION="script-update"
+          break
+          ;;
         *)
-          printf '输入无效，请输入 1、2 或 3。\n'
+          printf '输入无效，请输入 1、2、3、4、5、6 或 7。\n'
           ;;
       esac
     done
@@ -276,6 +303,28 @@ resolve_install_port() {
 
   PORT="$(random_port)"
   log "未指定端口，已自动选择随机端口: ${PORT}"
+}
+
+config_get_value() {
+  local key="$1"
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    return 0
+  fi
+  sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" "$CONFIG_PATH" | head -n 1
+}
+
+get_installed_major() {
+  local ver
+  if [[ -f "$VERSION_MARK_PATH" ]]; then
+    ver="$(tr -d '[:space:]' < "$VERSION_MARK_PATH")"
+    case "$ver" in
+      4.*) echo "4"; return 0 ;;
+      5.*) echo "5"; return 0 ;;
+      4|5) echo "$ver"; return 0 ;;
+      *) ;;
+    esac
+  fi
+  echo "unknown"
 }
 
 detect_arch() {
@@ -501,15 +550,57 @@ get_ip_region_tag() {
   echo "$tag"
 }
 
+print_node_examples() {
+  local pub_ip="$1"
+  local region_tag="$2"
+  local port="$3"
+  local psk="$4"
+  local major="$5"
+  local node_v4 node_v5
+
+  node_v4="${region_tag}-snellv4"
+  node_v5="${region_tag}-snellv5"
+
+  if [[ "$major" == "5" ]]; then
+    cat <<EOF
+
+Surge 节点示例（Snell v5）:
+  ${node_v5} = snell, ${pub_ip}, ${port}, psk=${psk}, version=5, reuse=true, tfo=true
+
+兼容模式（客户端按 v4 连接）:
+  ${node_v4} = snell, ${pub_ip}, ${port}, psk=${psk}, version=4, reuse=true, tfo=true
+EOF
+  elif [[ "$major" == "4" ]]; then
+    cat <<EOF
+
+Surge 节点示例（Snell v4）:
+  ${node_v4} = snell, ${pub_ip}, ${port}, psk=${psk}, version=4, reuse=true, tfo=true
+EOF
+  else
+    cat <<EOF
+
+Surge 节点示例（版本未知，建议先确认客户端版本）:
+  ${node_v4} = snell, ${pub_ip}, ${port}, psk=${psk}, version=4, reuse=true, tfo=true
+  ${node_v5} = snell, ${pub_ip}, ${port}, psk=${psk}, version=5, reuse=true, tfo=true
+EOF
+  fi
+}
+
+write_version_marker() {
+  local cfg_dir
+  cfg_dir="$(dirname "$VERSION_MARK_PATH")"
+  mkdir -p "$cfg_dir"
+  printf '%s\n' "$VERSION" > "$VERSION_MARK_PATH"
+  chmod 600 "$VERSION_MARK_PATH" || true
+}
+
 print_summary() {
-  local pub_ip region_tag node_v4 node_v5
+  local pub_ip region_tag
   pub_ip="$(get_public_ip)"
   if [[ -z "$pub_ip" ]]; then
     pub_ip="<你的服务器IP>"
   fi
   region_tag="$(get_ip_region_tag "$pub_ip")"
-  node_v4="${region_tag}-snellv4"
-  node_v5="${region_tag}-snellv5"
 
   cat <<EOF
 
@@ -531,22 +622,7 @@ IPv6: ${IPV6}
   ${region_tag}
 EOF
 
-  if [[ "$SNELL_MAJOR" == "5" ]]; then
-    cat <<EOF
-
-Surge 节点示例（Snell v5）:
-  ${node_v5} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=5, reuse=true, tfo=true
-
-兼容模式（客户端按 v4 连接）:
-  ${node_v4} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=4, reuse=true, tfo=true
-EOF
-  else
-    cat <<EOF
-
-Surge 节点示例（Snell v4）:
-  ${node_v4} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=4, reuse=true, tfo=true
-EOF
-  fi
+  print_node_examples "$pub_ip" "$region_tag" "$PORT" "$PSK" "$SNELL_MAJOR"
 }
 
 run_install_flow() {
@@ -562,6 +638,7 @@ run_install_flow() {
 
   log "写入配置文件"
   write_config
+  write_version_marker
 
   log "写入 systemd 服务"
   write_service
@@ -574,7 +651,7 @@ run_install_flow() {
 }
 
 run_update_flow() {
-  local backup_path=""
+  local backup_path="" cfg_backup_path=""
 
   [[ -f "$CONFIG_PATH" ]] || die "未找到配置文件 ${CONFIG_PATH}，请先执行安装流程"
 
@@ -592,9 +669,15 @@ run_update_flow() {
     cp "$BIN_PATH" "$backup_path"
     log "已备份旧二进制: ${backup_path}"
   fi
+  if [[ -f "$CONFIG_PATH" ]]; then
+    cfg_backup_path="${CONFIG_PATH}.bak.$(date +%Y%m%d%H%M%S)"
+    cp "$CONFIG_PATH" "$cfg_backup_path"
+    log "已备份配置文件: ${cfg_backup_path}"
+  fi
 
   log "下载并安装 Snell v${VERSION}"
   download_and_install_binary
+  write_version_marker
 
   if systemctl list-unit-files | grep -Eq '^snell\.service'; then
     log "重启 snell.service"
@@ -619,6 +702,93 @@ Snell 更新完成
   systemctl restart snell.service
   journalctl -u snell.service -f
 EOF
+}
+
+run_config_flow() {
+  local pub_ip region_tag major listen psk port
+
+  [[ -f "$CONFIG_PATH" ]] || die "未找到配置文件 ${CONFIG_PATH}"
+  pub_ip="$(get_public_ip)"
+  if [[ -z "$pub_ip" ]]; then
+    pub_ip="<你的服务器IP>"
+  fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+  major="$(get_installed_major)"
+  listen="$(config_get_value "listen")"
+  psk="$(config_get_value "psk")"
+  port="${listen##*:}"
+  if [[ -z "$port" || "$port" == "$listen" ]]; then
+    port="<port>"
+  fi
+
+  cat <<EOF
+
+========================================
+当前 Snell 配置
+========================================
+配置文件: ${CONFIG_PATH}
+版本标记: ${major}
+listen: ${listen}
+psk: ${psk}
+ipv6: $(config_get_value "ipv6")
+dns: $(config_get_value "dns")
+egress-interface: $(config_get_value "egress-interface")
+EOF
+
+  print_node_examples "$pub_ip" "$region_tag" "$port" "$psk" "$major"
+}
+
+run_restart_flow() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    die "未检测到 systemctl，无法重启服务"
+  fi
+  if ! systemctl list-unit-files | grep -Eq '^snell\.service'; then
+    die "未检测到 snell.service，请先安装"
+  fi
+  systemctl daemon-reload
+  systemctl restart snell.service
+  log "snell.service 已重启"
+  systemctl status snell.service --no-pager || true
+}
+
+run_status_flow() {
+  local listen
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl status snell.service --no-pager || true
+  else
+    log "未检测到 systemctl"
+  fi
+
+  listen="$(config_get_value "listen")"
+  if [[ -n "$listen" && "$listen" == *:* ]]; then
+    local port
+    port="${listen##*:}"
+    if command -v ss >/dev/null 2>&1; then
+      echo
+      echo "端口监听（${port}）:"
+      ss -lntup | grep -E "[.:]${port}[[:space:]]" || true
+    fi
+  fi
+}
+
+run_script_update_flow() {
+  local script_self tmp_new
+  script_self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  tmp_new="/tmp/install_snell.sh.new.$$"
+
+  log "下载最新脚本: ${SCRIPT_UPDATE_URL}"
+  curl -fsSL -o "$tmp_new" "$SCRIPT_UPDATE_URL"
+  grep -q '^#!/usr/bin/env bash' "$tmp_new" || die "下载的脚本内容异常，已取消更新"
+
+  if cmp -s "$tmp_new" "$script_self"; then
+    rm -f "$tmp_new"
+    log "当前已是最新脚本，无需更新"
+    return 0
+  fi
+
+  install -m 0755 "$tmp_new" "$script_self"
+  rm -f "$tmp_new"
+  log "脚本更新完成: ${script_self}"
 }
 
 confirm_uninstall() {
@@ -713,12 +883,14 @@ EOF
 }
 
 main() {
-  need_root
   parse_args "$@"
+  need_root
   resolve_action_choice
 
-  if [[ "$ACTION" != "uninstall" ]]; then
+  if [[ "$ACTION" == "install" || "$ACTION" == "update" ]]; then
     resolve_version_choice
+  fi
+  if [[ "$ACTION" == "install" ]]; then
     resolve_install_port
   fi
 
@@ -726,6 +898,10 @@ main() {
     install) run_install_flow ;;
     update) run_update_flow ;;
     uninstall) run_uninstall_flow ;;
+    config) run_config_flow ;;
+    restart) run_restart_flow ;;
+    status) run_status_flow ;;
+    script-update) run_script_update_flow ;;
     *) die "未知操作: $ACTION" ;;
   esac
 }

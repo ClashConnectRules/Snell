@@ -37,6 +37,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 - Auto-allow firewall rules (`ufw` / `firewalld`) when available
 - Update mode keeps existing config and backs up previous binary
 - Node name format uses IP region prefix: `<region>-snellv4` / `<region>-snellv5`
+- Built-in management actions: `config`, `restart`, `status`, `script-update`
 
 ## Supported Versions and Architectures
 
@@ -113,6 +114,30 @@ Uninstall and delete the script itself:
 sudo bash install_snell.sh --action uninstall --remove-script
 ```
 
+Show current configuration:
+
+```bash
+sudo bash install_snell.sh --action config
+```
+
+Restart Snell service:
+
+```bash
+sudo bash install_snell.sh --action restart
+```
+
+Show Snell status:
+
+```bash
+sudo bash install_snell.sh --action status
+```
+
+Update this script itself:
+
+```bash
+sudo bash install_snell.sh --action script-update
+```
+
 Pin exact version:
 
 ```bash
@@ -123,7 +148,8 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## Arguments
 
 ```text
---action <install|update|uninstall>  Select operation
+--action <install|update|uninstall|config|restart|status|script-update>
+                          Select operation
 --remove-script             Delete current script after uninstall
 --major <4|5>               Select major version
 --version <ver>             Exact version (e.g. 4.1.1 / 5.0.1)
