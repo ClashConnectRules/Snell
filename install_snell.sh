@@ -23,6 +23,7 @@ Snell 一键安装脚本（Linux + systemd）
 
 用法:
   sudo bash install_snell.sh [选项]
+  # 若检测到已安装且未指定 --action，默认走 update
 
 选项:
   --action <install|update|uninstall>  选择操作（安装/更新/卸载）
@@ -97,11 +98,28 @@ parse_args() {
 }
 
 resolve_action_choice() {
+  local installed default_choice prompt_hint
+
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
       install|update|uninstall) return 0 ;;
       *) die "--action 仅支持 install、update 或 uninstall" ;;
     esac
+  fi
+
+  installed="false"
+  if [[ -f "$CONFIG_PATH" || -f "$BIN_PATH" || -f "$SERVICE_PATH" ]]; then
+    installed="true"
+  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | rg -q '^snell\.service'; then
+    installed="true"
+  fi
+
+  if [[ "$installed" == "true" ]]; then
+    default_choice="2"
+    prompt_hint="（检测到已安装，默认 2 更新）"
+  else
+    default_choice="1"
+    prompt_hint="（默认 1）"
   fi
 
   if [[ -t 0 ]]; then
@@ -111,8 +129,8 @@ resolve_action_choice() {
     printf '  2) 更新 Snell（保留现有配置）\n'
     printf '  3) 卸载 Snell（删除服务与配置）\n'
     while true; do
-      read -r -p "请输入 1/2/3（默认 1）: " choice
-      choice="${choice:-1}"
+      read -r -p "请输入 1/2/3 ${prompt_hint}: " choice
+      choice="${choice:-$default_choice}"
       case "$choice" in
         1)
           ACTION="install"
@@ -132,7 +150,12 @@ resolve_action_choice() {
       esac
     done
   else
-    ACTION="install"
+    if [[ "$installed" == "true" ]]; then
+      ACTION="update"
+      log "检测到已安装 Snell，未指定 --action 时默认执行 update"
+    else
+      ACTION="install"
+    fi
   fi
 }
 

@@ -29,6 +29,7 @@
 ## 功能特性
 
 - 交互式菜单：先选 `安装`、`更新` 或 `卸载`
+- 检测到已安装时，默认操作自动切到 `更新`
 - 交互式版本：再选 Snell `v4` 或 `v5`
 - 自动识别架构并下载官方二进制
 - 自动生成 `/etc/snell/snell-server.conf`
@@ -72,6 +73,8 @@ curl -L https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_s
 如果当前用户不是 root，请把最后一段改为 `sudo bash install_snell.sh`。
 
 ### 非交互执行示例
+
+若系统已安装 Snell 且未传 `--action`，脚本会默认执行 `update`。
 
 安装 v4:
 

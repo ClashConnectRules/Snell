@@ -29,6 +29,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 ## Features
 
 - Interactive action menu: `install`, `update`, or `uninstall`
+- Auto-default to `update` when an existing installation is detected
 - Interactive version selection: Snell `v4` or `v5`
 - Auto-detect architecture and download official binary
 - Auto-generate `/etc/snell/snell-server.conf`
@@ -72,6 +73,8 @@ curl -L https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_s
 If your current user is not root, replace the last part with `sudo bash install_snell.sh`.
 
 ### Non-interactive examples
+
+If Snell is already installed and `--action` is omitted, the script defaults to `update`.
 
 Install v4:
 
