@@ -111,7 +111,7 @@ resolve_action_choice() {
   installed="false"
   if [[ -f "$CONFIG_PATH" || -f "$BIN_PATH" || -f "$SERVICE_PATH" ]]; then
     installed="true"
-  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | rg -q '^snell\.service'; then
+  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -Eq '^snell\.service'; then
     installed="true"
   fi
 
@@ -542,7 +542,7 @@ run_update_flow() {
   log "下载并安装 Snell v${VERSION}"
   download_and_install_binary
 
-  if systemctl list-unit-files | rg -q '^snell\.service'; then
+  if systemctl list-unit-files | grep -Eq '^snell\.service'; then
     log "重启 snell.service"
     systemctl daemon-reload
     systemctl restart snell.service
@@ -595,7 +595,7 @@ run_uninstall_flow() {
   log "开始卸载 Snell"
 
   if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files | rg -q '^snell\.service'; then
+    if systemctl list-unit-files | grep -Eq '^snell\.service'; then
       systemctl stop snell.service || true
       systemctl disable snell.service || true
       log "已停止并禁用 snell.service"
