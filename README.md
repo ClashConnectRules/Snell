@@ -6,7 +6,7 @@
 [![Stars](https://img.shields.io/github/stars/ClashConnectRules/Snell?style=for-the-badge)](https://github.com/ClashConnectRules/Snell/stargazers)
 [![Last Commit](https://img.shields.io/github/last-commit/ClashConnectRules/Snell?style=for-the-badge)](https://github.com/ClashConnectRules/Snell/commits/main)
 
-A Linux + systemd oriented Snell server deployment script with interactive install/update flow, v4/v5 selection, auto config generation, and systemd service setup.
+A Linux + systemd oriented Snell server deployment script with interactive install/update/uninstall flow, v4/v5 selection, auto config generation, and systemd service setup.
 
 - 中文文档: [README_ZH.md](./README_ZH.md)
 - Repository: `https://github.com/ClashConnectRules/Snell.git`
@@ -28,7 +28,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 
 ## Features
 
-- Interactive action menu: `install` or `update`
+- Interactive action menu: `install`, `update`, or `uninstall`
 - Interactive version selection: Snell `v4` or `v5`
 - Auto-detect architecture and download official binary
 - Auto-generate `/etc/snell/snell-server.conf`
@@ -58,14 +58,18 @@ Supported architectures:
 git clone https://github.com/ClashConnectRules/Snell.git
 cd Snell
 chmod +x install_snell.sh
-sudo bash install_snell.sh
+bash install_snell.sh
 ```
+
+If your current user is not root, run `sudo bash install_snell.sh`.
 
 ### Option 2: Run via direct script URL
 
 ```bash
-curl -L https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh -o install_snell.sh && chmod +x install_snell.sh && sudo bash install_snell.sh
+curl -L https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh -o install_snell.sh && chmod +x install_snell.sh && bash install_snell.sh
 ```
+
+If your current user is not root, replace the last part with `sudo bash install_snell.sh`.
 
 ### Non-interactive examples
 
@@ -93,6 +97,18 @@ Update to v5:
 sudo bash install_snell.sh --action update --major 5
 ```
 
+Uninstall Snell service and files:
+
+```bash
+sudo bash install_snell.sh --action uninstall
+```
+
+Uninstall and delete the script itself:
+
+```bash
+sudo bash install_snell.sh --action uninstall --remove-script
+```
+
 Pin exact version:
 
 ```bash
@@ -103,7 +119,8 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## Arguments
 
 ```text
---action <install|update>   Select operation
+--action <install|update|uninstall>  Select operation
+--remove-script             Delete current script after uninstall
 --major <4|5>               Select major version
 --version <ver>             Exact version (e.g. 4.1.1 / 5.0.1)
 --port <port>               Listen port, default 6160

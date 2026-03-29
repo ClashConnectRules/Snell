@@ -6,7 +6,7 @@
 [![Stars](https://img.shields.io/github/stars/ClashConnectRules/Snell?style=for-the-badge)](https://github.com/ClashConnectRules/Snell/stargazers)
 [![Last Commit](https://img.shields.io/github/last-commit/ClashConnectRules/Snell?style=for-the-badge)](https://github.com/ClashConnectRules/Snell/commits/main)
 
-用于 Linux + systemd 环境的 Snell 服务端部署脚本，支持交互式安装与更新、v4/v5 版本选择、自动生成配置、自动创建服务。
+用于 Linux + systemd 环境的 Snell 服务端部署脚本，支持交互式安装/更新/卸载、v4/v5 版本选择、自动生成配置、自动创建服务。
 
 - English: [README.md](./README.md)
 - 仓库地址: `https://github.com/ClashConnectRules/Snell.git`
@@ -28,7 +28,7 @@
 
 ## 功能特性
 
-- 交互式菜单：先选 `安装` 或 `更新`
+- 交互式菜单：先选 `安装`、`更新` 或 `卸载`
 - 交互式版本：再选 Snell `v4` 或 `v5`
 - 自动识别架构并下载官方二进制
 - 自动生成 `/etc/snell/snell-server.conf`
@@ -58,14 +58,18 @@
 git clone https://github.com/ClashConnectRules/Snell.git
 cd Snell
 chmod +x install_snell.sh
-sudo bash install_snell.sh
+bash install_snell.sh
 ```
+
+如果当前用户不是 root，请使用 `sudo bash install_snell.sh`。
 
 ### 方式 2：脚本直链一键执行
 
 ```bash
-curl -L https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh -o install_snell.sh && chmod +x install_snell.sh && sudo bash install_snell.sh
+curl -L https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh -o install_snell.sh && chmod +x install_snell.sh && bash install_snell.sh
 ```
+
+如果当前用户不是 root，请把最后一段改为 `sudo bash install_snell.sh`。
 
 ### 非交互执行示例
 
@@ -93,6 +97,18 @@ sudo bash install_snell.sh --action update --major 4
 sudo bash install_snell.sh --action update --major 5
 ```
 
+卸载 Snell 服务与文件:
+
+```bash
+sudo bash install_snell.sh --action uninstall
+```
+
+卸载并删除当前脚本:
+
+```bash
+sudo bash install_snell.sh --action uninstall --remove-script
+```
+
 指定精确版本:
 
 ```bash
@@ -103,7 +119,8 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## 参数说明
 
 ```text
---action <install|update>   选择操作（安装/更新）
+--action <install|update|uninstall>  选择操作（安装/更新/卸载）
+--remove-script             卸载后删除当前脚本文件
 --major <4|5>               选择主版本
 --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
 --port <port>               监听端口，默认 6160

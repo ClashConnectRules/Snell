@@ -6,6 +6,7 @@ DEFAULT_VERSION_V5="5.0.1"
 VERSION=""
 SNELL_MAJOR=""
 ACTION=""
+REMOVE_SCRIPT="false"
 PORT="6160"
 PSK=""
 IPV6="false"
@@ -24,7 +25,8 @@ Snell 一键安装脚本（Linux + systemd）
   sudo bash install_snell.sh [选项]
 
 选项:
-  --action <install|update>   选择操作（安装/更新）
+  --action <install|update|uninstall>  选择操作（安装/更新/卸载）
+  --remove-script             卸载后删除当前脚本文件
   --major <4|5>               选择安装主版本（推荐）
   --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
   --port <port>               监听端口，默认: 6160
@@ -36,8 +38,10 @@ Snell 一键安装脚本（Linux + systemd）
   -h, --help                  显示帮助
 
 示例:
-  sudo bash install_snell.sh                # 启动后交互选择 v4/v5
+  sudo bash install_snell.sh                # 启动后交互选择操作与版本
   sudo bash install_snell.sh --action update --major 5
+  sudo bash install_snell.sh --action uninstall
+  sudo bash install_snell.sh --action uninstall --remove-script
   sudo bash install_snell.sh --major 4
   sudo bash install_snell.sh --major 5 --port 22333
   sudo bash install_snell.sh --port 22333 --ipv6 false
@@ -66,6 +70,8 @@ parse_args() {
     case "$1" in
       --action)
         ACTION="${2:-}"; shift 2 ;;
+      --remove-script)
+        REMOVE_SCRIPT="true"; shift ;;
       --major)
         SNELL_MAJOR="${2:-}"; shift 2 ;;
       --version)
@@ -93,8 +99,8 @@ parse_args() {
 resolve_action_choice() {
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
-      install|update) return 0 ;;
-      *) die "--action 仅支持 install 或 update" ;;
+      install|update|uninstall) return 0 ;;
+      *) die "--action 仅支持 install、update 或 uninstall" ;;
     esac
   fi
 
@@ -103,8 +109,9 @@ resolve_action_choice() {
     printf '请选择操作：\n'
     printf '  1) 安装 Snell\n'
     printf '  2) 更新 Snell（保留现有配置）\n'
+    printf '  3) 卸载 Snell（删除服务与配置）\n'
     while true; do
-      read -r -p "请输入 1/2（默认 1）: " choice
+      read -r -p "请输入 1/2/3（默认 1）: " choice
       choice="${choice:-1}"
       case "$choice" in
         1)
@@ -115,8 +122,12 @@ resolve_action_choice() {
           ACTION="update"
           break
           ;;
+        3)
+          ACTION="uninstall"
+          break
+          ;;
         *)
-          printf '输入无效，请输入 1 或 2。\n'
+          printf '输入无效，请输入 1、2 或 3。\n'
           ;;
       esac
     done
@@ -206,8 +217,9 @@ detect_arch() {
 }
 
 install_deps() {
-  if command -v curl >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
-    log "依赖 curl/unzip 已存在，跳过安装"
+  if command -v curl >/dev/null 2>&1 && \
+     (command -v unzip >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1 || command -v bsdtar >/dev/null 2>&1); then
+    log "依赖已满足（curl + 压缩解包工具），跳过安装"
     return 0
   fi
 
@@ -226,6 +238,34 @@ install_deps() {
   else
     die "无法识别包管理器，请手动安装 curl 和 unzip"
   fi
+}
+
+extract_snell_binary() {
+  local zip_file="$1"
+
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -o "$zip_file" -d /tmp >/dev/null
+    return 0
+  fi
+
+  if command -v bsdtar >/dev/null 2>&1; then
+    bsdtar -xf "$zip_file" -C /tmp
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$zip_file" <<'PY'
+import sys
+import zipfile
+
+zip_path = sys.argv[1]
+with zipfile.ZipFile(zip_path, "r") as zf:
+    zf.extractall("/tmp")
+PY
+    return 0
+  fi
+
+  die "未找到可用解压工具（unzip/bsdtar/python3）"
 }
 
 generate_psk() {
@@ -252,7 +292,7 @@ download_and_install_binary() {
   curl -fL --retry 3 --retry-delay 2 -o "$tmp_zip" "$url"
 
   log "安装二进制到 $BIN_PATH"
-  unzip -o "$tmp_zip" -d /tmp >/dev/null
+  extract_snell_binary "$tmp_zip"
   install -m 0755 /tmp/snell-server "$BIN_PATH"
   rm -f "$tmp_zip" /tmp/snell-server
 }
@@ -442,15 +482,110 @@ Snell 更新完成
 EOF
 }
 
+confirm_uninstall() {
+  if [[ -t 0 ]]; then
+    local answer
+    read -r -p "确认卸载 Snell 并删除服务/配置/二进制？[y/N]: " answer
+    case "${answer:-N}" in
+      y|Y|yes|YES) return 0 ;;
+      *) die "已取消卸载" ;;
+    esac
+  fi
+}
+
+cleanup_empty_parent() {
+  local dir="$1"
+  if [[ -d "$dir" ]] && [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+    rmdir "$dir" || true
+  fi
+}
+
+run_uninstall_flow() {
+  local script_self cfg_dir removed_script
+  removed_script="false"
+  script_self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  cfg_dir="$(dirname "$CONFIG_PATH")"
+
+  confirm_uninstall
+  log "开始卸载 Snell"
+
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl list-unit-files | rg -q '^snell\.service'; then
+      systemctl stop snell.service || true
+      systemctl disable snell.service || true
+      log "已停止并禁用 snell.service"
+    else
+      log "未检测到 snell.service，跳过 stop/disable"
+    fi
+  else
+    log "未检测到 systemctl，跳过服务管理"
+  fi
+
+  if [[ -f "$SERVICE_PATH" ]]; then
+    rm -f "$SERVICE_PATH"
+    log "已删除服务文件: $SERVICE_PATH"
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+  fi
+
+  if [[ -f "$CONFIG_PATH" ]]; then
+    rm -f "$CONFIG_PATH"
+    log "已删除配置文件: $CONFIG_PATH"
+  fi
+  cleanup_empty_parent "$cfg_dir"
+
+  if [[ -f "$BIN_PATH" ]]; then
+    rm -f "$BIN_PATH"
+    log "已删除二进制: $BIN_PATH"
+  fi
+  rm -f "${BIN_PATH}.bak".* 2>/dev/null || true
+
+  if [[ "$REMOVE_SCRIPT" != "true" && -t 0 ]]; then
+    local answer
+    read -r -p "是否同时删除当前脚本 ${script_self} ? [y/N]: " answer
+    case "${answer:-N}" in
+      y|Y|yes|YES) REMOVE_SCRIPT="true" ;;
+      *) ;;
+    esac
+  fi
+
+  if [[ "$REMOVE_SCRIPT" == "true" && -f "$script_self" ]]; then
+    rm -f "$script_self"
+    removed_script="true"
+  fi
+
+  cat <<EOF
+
+========================================
+Snell 卸载完成
+========================================
+已删除:
+  - $SERVICE_PATH
+  - $CONFIG_PATH
+  - $BIN_PATH
+EOF
+
+  if [[ "$removed_script" == "true" ]]; then
+    cat <<EOF
+  - $script_self
+EOF
+  fi
+}
+
 main() {
   need_root
   parse_args "$@"
   resolve_action_choice
-  resolve_version_choice
+
+  if [[ "$ACTION" != "uninstall" ]]; then
+    resolve_version_choice
+  fi
 
   case "$ACTION" in
     install) run_install_flow ;;
     update) run_update_flow ;;
+    uninstall) run_uninstall_flow ;;
     *) die "未知操作: $ACTION" ;;
   esac
 }
