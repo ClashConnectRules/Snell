@@ -41,6 +41,7 @@
 - Profile 化多用户端口管理：`profile-add`、`profile-list`、`profile-remove`
 - BBR 开关：`bbr-enable`、`bbr-disable`、`bbr-status`
 - Docker 部署模式：`docker-deploy`、`docker-remove`、`docker-status`
+- ShadowTLS 部署：`stls-deploy`、`stls-status`、`stls-remove`（支持交互选择上游）
 
 ## 支持版本与架构
 
@@ -189,6 +190,24 @@ sudo bash install_snell.sh --action docker-status
 sudo bash install_snell.sh --action docker-remove
 ```
 
+给 Snell 前置部署 ShadowTLS:
+
+```bash
+sudo bash install_snell.sh --action stls-deploy
+```
+
+查看 ShadowTLS 状态:
+
+```bash
+sudo bash install_snell.sh --action stls-status
+```
+
+移除 ShadowTLS:
+
+```bash
+sudo bash install_snell.sh --action stls-remove
+```
+
 指定精确版本:
 
 ```bash
@@ -199,8 +218,8 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## 参数说明
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status>
-                          选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本/多用户/BBR/Docker）
+--action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status>
+                          选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本/多用户/BBR/Docker/ShadowTLS）
 --name <profile_name>       Profile 名称（多用户动作时使用）
 --remove-script             卸载后删除当前脚本文件
 --major <4|5>               选择主版本
@@ -210,6 +229,11 @@ sudo bash install_snell.sh --action update --version 5.0.1
 --ipv6 <true|false>         是否启用 IPv6，默认 false
 --dns "<dns1,dns2>"         可选 DNS 参数
 --egress-interface <iface>  可选出口网卡（仅 v5）
+--stls-version <2|3>        ShadowTLS 版本（默认 3）
+--stls-port <port>          ShadowTLS 监听端口（默认 443）
+--stls-password <password>  ShadowTLS 密码（不传自动生成）
+--stls-sni <sni>            ShadowTLS SNI（默认 gateway.icloud.com）
+--stls-upstream <ip:port>   ShadowTLS 上游 Snell 地址（不传自动选择）
 --skip-firewall             跳过防火墙放行
 -h, --help                  显示帮助
 ```
@@ -219,6 +243,9 @@ sudo bash install_snell.sh --action update --version 5.0.1
 - 二进制: `/usr/local/bin/snell-server`
 - 配置文件: `/etc/snell/snell-server.conf`
 - 服务文件: `/etc/systemd/system/snell.service`
+- ShadowTLS 二进制: `/usr/local/bin/shadow-tls`
+- ShadowTLS 环境文件: `/etc/snell/shadowtls.env`
+- ShadowTLS 服务文件: `/etc/systemd/system/shadowtls.service`
 
 ## 运维命令
 

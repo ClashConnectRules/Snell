@@ -28,6 +28,18 @@ DOCKER_DIR="/etc/snell/docker"
 DOCKER_CONFIG_PATH="/etc/snell/docker/snell-server.conf"
 DOCKER_COMPOSE_PATH="/etc/snell/docker/compose.yaml"
 DOCKER_CONTAINER_NAME="snell-docker"
+STLS_BIN_PATH="/usr/local/bin/shadow-tls"
+STLS_SERVICE_PATH="/etc/systemd/system/shadowtls.service"
+STLS_ENV_PATH="/etc/snell/shadowtls.env"
+STLS_RELEASE_API="https://api.github.com/repos/ihciah/shadow-tls/releases/latest"
+STLS_VERSION="3"
+STLS_PORT="443"
+STLS_PASSWORD=""
+STLS_SNI="gateway.icloud.com"
+STLS_UPSTREAM=""
+STLS_BACKEND_PSK=""
+STLS_BACKEND_MAJOR="unknown"
+STLS_BACKEND_LABEL=""
 
 show_help() {
   cat <<'EOF'
@@ -38,8 +50,8 @@ Snell 一键安装脚本（Linux + systemd）
   # 若检测到已安装且未指定 --action，默认走 update
 
 选项:
-  --action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status>
-                              选择操作（安装/更新/卸载/配置/重启/状态/脚本更新/多用户/BBR/Docker）
+  --action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status>
+                              选择操作（安装/更新/卸载/配置/重启/状态/脚本更新/多用户/BBR/Docker/ShadowTLS）
   --name <profile_name>       Profile 名称（多用户动作时使用）
   --remove-script             卸载后删除当前脚本文件
   --major <4|5>               选择安装主版本（推荐）
@@ -49,6 +61,11 @@ Snell 一键安装脚本（Linux + systemd）
   --ipv6 <true|false>         是否启用 IPv6，默认: false
   --dns "<dns1,dns2>"         可选 DNS 参数（v4.1+ 支持）
   --egress-interface <iface>  可选 egress-interface 参数（v5 支持）
+  --stls-version <2|3>        ShadowTLS 版本（默认 3）
+  --stls-port <port>          ShadowTLS 监听端口（默认 443）
+  --stls-password <password>  ShadowTLS 密码（不传则自动生成）
+  --stls-sni <sni>            ShadowTLS SNI（默认 gateway.icloud.com）
+  --stls-upstream <ip:port>   ShadowTLS 上游地址（默认自动选择）
   --skip-firewall             跳过防火墙放行步骤
   -h, --help                  显示帮助
 
@@ -69,6 +86,9 @@ Snell 一键安装脚本（Linux + systemd）
   sudo bash install_snell.sh --action docker-deploy --major 5 --port 31001
   sudo bash install_snell.sh --action docker-status
   sudo bash install_snell.sh --action docker-remove
+  sudo bash install_snell.sh --action stls-deploy
+  sudo bash install_snell.sh --action stls-status
+  sudo bash install_snell.sh --action stls-remove
   sudo bash install_snell.sh --major 4
   sudo bash install_snell.sh --major 5 --port 22333
   sudo bash install_snell.sh --port 22333 --ipv6 false
@@ -115,6 +135,16 @@ parse_args() {
         DNS_SERVERS="${2:-}"; shift 2 ;;
       --egress-interface)
         EGRESS_INTERFACE="${2:-}"; shift 2 ;;
+      --stls-version)
+        STLS_VERSION="${2:-}"; shift 2 ;;
+      --stls-port)
+        STLS_PORT="${2:-}"; shift 2 ;;
+      --stls-password)
+        STLS_PASSWORD="${2:-}"; shift 2 ;;
+      --stls-sni)
+        STLS_SNI="${2:-}"; shift 2 ;;
+      --stls-upstream)
+        STLS_UPSTREAM="${2:-}"; shift 2 ;;
       --skip-firewall)
         SKIP_FIREWALL="true"; shift ;;
       -h|--help)
@@ -130,8 +160,8 @@ resolve_action_choice() {
 
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
-      install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status) return 0 ;;
-      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status" ;;
+      install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status) return 0 ;;
+      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status/stls-deploy/stls-remove/stls-status" ;;
     esac
   fi
 
@@ -169,8 +199,11 @@ resolve_action_choice() {
     printf ' 14) Docker: 部署 Snell\n'
     printf ' 15) Docker: 移除 Snell\n'
     printf ' 16) Docker: 查看状态\n'
+    printf ' 17) ShadowTLS: 部署\n'
+    printf ' 18) ShadowTLS: 移除\n'
+    printf ' 19) ShadowTLS: 查看状态\n'
     while true; do
-      read -r -p "请输入 1-16 ${prompt_hint}: " choice
+      read -r -p "请输入 1-19 ${prompt_hint}: " choice
       choice="${choice:-$default_choice}"
       case "$choice" in
         1)
@@ -237,8 +270,20 @@ resolve_action_choice() {
           ACTION="docker-status"
           break
           ;;
+        17)
+          ACTION="stls-deploy"
+          break
+          ;;
+        18)
+          ACTION="stls-remove"
+          break
+          ;;
+        19)
+          ACTION="stls-status"
+          break
+          ;;
         *)
-          printf '输入无效，请输入 1 到 16。\n'
+          printf '输入无效，请输入 1 到 19。\n'
           ;;
       esac
     done
@@ -368,6 +413,157 @@ resolve_install_port() {
 
   PORT="$(random_port)"
   log "未指定端口，已自动选择随机端口: ${PORT}"
+}
+
+generate_random_secret() {
+  local length="${1:-24}"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c "$length"
+  else
+    tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$length"
+  fi
+}
+
+detect_shadowtls_asset() {
+  local machine
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64) echo "shadow-tls-x86_64-unknown-linux-musl" ;;
+    aarch64|arm64) echo "shadow-tls-aarch64-unknown-linux-musl" ;;
+    armv7l|armv7) echo "shadow-tls-armv7-unknown-linux-musleabihf" ;;
+    armv6l|arm) echo "shadow-tls-arm-unknown-linux-musleabi" ;;
+    *) die "ShadowTLS 暂不支持当前架构: $machine" ;;
+  esac
+}
+
+resolve_stls_upstream() {
+  local choices_upstream choices_psk choices_major choices_label
+  local idx conf listen port psk major name version_path choice_index
+  choices_upstream=()
+  choices_psk=()
+  choices_major=()
+  choices_label=()
+
+  if [[ -f "$CONFIG_PATH" ]]; then
+    listen="$(config_get_value_from_file "$CONFIG_PATH" "listen")"
+    psk="$(config_get_value_from_file "$CONFIG_PATH" "psk")"
+    port="${listen##*:}"
+    if [[ -n "$port" && "$port" != "$listen" ]]; then
+      choices_upstream+=("127.0.0.1:${port}")
+      choices_psk+=("$psk")
+      choices_major+=("$(get_installed_major)")
+      choices_label+=("main(snell.service)")
+    fi
+  fi
+
+  if [[ -d "$PROFILES_DIR" ]]; then
+    for conf in "$PROFILES_DIR"/*.conf; do
+      [[ -e "$conf" ]] || continue
+      name="$(basename "$conf" .conf)"
+      listen="$(config_get_value_from_file "$conf" "listen")"
+      psk="$(config_get_value_from_file "$conf" "psk")"
+      port="${listen##*:}"
+      version_path="$(profile_version_path "$name")"
+      major="unknown"
+      if [[ -f "$version_path" ]]; then
+        case "$(tr -d '[:space:]' < "$version_path")" in
+          4.*|4) major="4" ;;
+          5.*|5) major="5" ;;
+          *) major="unknown" ;;
+        esac
+      fi
+      if [[ -n "$port" && "$port" != "$listen" ]]; then
+        choices_upstream+=("127.0.0.1:${port}")
+        choices_psk+=("$psk")
+        choices_major+=("$major")
+        choices_label+=("profile:${name}")
+      fi
+    done
+  fi
+
+  if [[ -n "$STLS_UPSTREAM" ]]; then
+    for idx in "${!choices_upstream[@]}"; do
+      if [[ "${choices_upstream[$idx]}" == "$STLS_UPSTREAM" ]]; then
+        STLS_BACKEND_PSK="${choices_psk[$idx]}"
+        STLS_BACKEND_MAJOR="${choices_major[$idx]}"
+        STLS_BACKEND_LABEL="${choices_label[$idx]}"
+        return 0
+      fi
+    done
+    STLS_BACKEND_LABEL="manual"
+    STLS_BACKEND_PSK=""
+    STLS_BACKEND_MAJOR="unknown"
+    return 0
+  fi
+
+  if [[ "${#choices_upstream[@]}" -eq 0 ]]; then
+    die "未找到可用 Snell 上游。请先安装 Snell 或创建 Profile。"
+  fi
+
+  choice_index=0
+  if [[ "${#choices_upstream[@]}" -gt 1 && -t 0 ]]; then
+    echo "请选择 ShadowTLS 上游:"
+    idx=1
+    while [[ $idx -le ${#choices_upstream[@]} ]]; do
+      echo "  ${idx}) ${choices_label[$((idx-1))]} -> ${choices_upstream[$((idx-1))]}"
+      idx=$((idx+1))
+    done
+    read -r -p "输入序号（默认 1）: " choice_index
+    choice_index="${choice_index:-1}"
+    [[ "$choice_index" =~ ^[0-9]+$ ]] || die "无效选择"
+    (( choice_index >= 1 && choice_index <= ${#choices_upstream[@]} )) || die "无效选择"
+    choice_index=$((choice_index-1))
+  fi
+
+  STLS_UPSTREAM="${choices_upstream[$choice_index]}"
+  STLS_BACKEND_PSK="${choices_psk[$choice_index]}"
+  STLS_BACKEND_MAJOR="${choices_major[$choice_index]}"
+  STLS_BACKEND_LABEL="${choices_label[$choice_index]}"
+}
+
+resolve_stls_options() {
+  local upstream_port
+  if [[ -z "$STLS_PASSWORD" ]]; then
+    STLS_PASSWORD="$(generate_random_secret 20)"
+  fi
+
+  if [[ -t 0 ]]; then
+    local input_port input_sni input_version
+    read -r -p "ShadowTLS 监听端口（默认 ${STLS_PORT}）: " input_port
+    if [[ -n "${input_port:-}" ]]; then
+      STLS_PORT="$input_port"
+    fi
+    read -r -p "ShadowTLS SNI（默认 ${STLS_SNI}）: " input_sni
+    if [[ -n "${input_sni:-}" ]]; then
+      STLS_SNI="$input_sni"
+    fi
+    read -r -p "ShadowTLS 版本 2/3（默认 ${STLS_VERSION}）: " input_version
+    if [[ -n "${input_version:-}" ]]; then
+      STLS_VERSION="$input_version"
+    fi
+  fi
+
+  [[ "$STLS_PORT" =~ ^[0-9]+$ ]] || die "--stls-port 必须为数字"
+  (( STLS_PORT >= 1 && STLS_PORT <= 65535 )) || die "--stls-port 必须在 1-65535 之间"
+  [[ "$STLS_VERSION" == "2" || "$STLS_VERSION" == "3" ]] || die "--stls-version 仅支持 2 或 3"
+  [[ -n "$STLS_PASSWORD" ]] || die "--stls-password 不能为空"
+  [[ "$STLS_PASSWORD" != *" "* ]] || die "--stls-password 不能包含空格"
+  [[ "$STLS_UPSTREAM" == *:* || -z "$STLS_UPSTREAM" ]] || die "--stls-upstream 必须是 host:port"
+  [[ "$STLS_SNI" != *" "* ]] || die "--stls-sni 不能包含空格"
+
+  resolve_stls_upstream
+  [[ "$STLS_UPSTREAM" == *:* ]] || die "无法确定 ShadowTLS 上游地址"
+  upstream_port="${STLS_UPSTREAM##*:}"
+  [[ "$upstream_port" =~ ^[0-9]+$ ]] || die "ShadowTLS 上游端口无效: ${STLS_UPSTREAM}"
+  case "${STLS_UPSTREAM%:*}" in
+    127.0.0.1|0.0.0.0|localhost|::1)
+      if [[ "${STLS_UPSTREAM##*:}" == "$STLS_PORT" ]]; then
+        die "本地上游端口不能与 ShadowTLS 监听端口相同: ${STLS_PORT}"
+      fi
+      ;;
+    *)
+      ;;
+  esac
 }
 
 config_get_value() {
@@ -588,24 +784,29 @@ WantedBy=multi-user.target
 EOF
 }
 
-try_configure_firewall() {
+try_configure_firewall_port() {
+  local fw_port="$1"
   if [[ "$SKIP_FIREWALL" == "true" ]]; then
     log "已跳过防火墙步骤"
     return 0
   fi
 
   if command -v ufw >/dev/null 2>&1; then
-    ufw allow "${PORT}/tcp" || true
-    ufw allow "${PORT}/udp" || true
-    log "已尝试通过 ufw 放行 ${PORT}/tcp 和 ${PORT}/udp"
+    ufw allow "${fw_port}/tcp" || true
+    ufw allow "${fw_port}/udp" || true
+    log "已尝试通过 ufw 放行 ${fw_port}/tcp 和 ${fw_port}/udp"
   elif command -v firewall-cmd >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port="${PORT}/tcp" || true
-    firewall-cmd --permanent --add-port="${PORT}/udp" || true
+    firewall-cmd --permanent --add-port="${fw_port}/tcp" || true
+    firewall-cmd --permanent --add-port="${fw_port}/udp" || true
     firewall-cmd --reload || true
-    log "已尝试通过 firewalld 放行 ${PORT}/tcp 和 ${PORT}/udp"
+    log "已尝试通过 firewalld 放行 ${fw_port}/tcp 和 ${fw_port}/udp"
   else
-    log "未检测到 ufw/firewalld，请自行放行端口 ${PORT}（TCP/UDP）"
+    log "未检测到 ufw/firewalld，请自行放行端口 ${fw_port}（TCP/UDP）"
   fi
+}
+
+try_configure_firewall() {
+  try_configure_firewall_port "$PORT"
 }
 
 start_service() {
@@ -1229,6 +1430,221 @@ run_docker_status_flow() {
   fi
 }
 
+fetch_shadowtls_release_json() {
+  curl -fsSL --retry 3 --retry-delay 2 "$STLS_RELEASE_API"
+}
+
+extract_shadowtls_tag() {
+  local json="$1"
+  printf '%s\n' "$json" | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\(.*\)",$/\1/p' | head -n 1
+}
+
+extract_shadowtls_download_url() {
+  local json="$1"
+  local asset="$2"
+  printf '%s\n' "$json" \
+    | sed -n 's/^[[:space:]]*"browser_download_url":[[:space:]]*"\(.*\)",$/\1/p' \
+    | grep -E "/${asset}$" \
+    | head -n 1
+}
+
+install_shadowtls_binary() {
+  local asset release_json release_tag download_url tmp_bin
+  asset="$(detect_shadowtls_asset)"
+  release_json="$(fetch_shadowtls_release_json)" || die "获取 ShadowTLS Release 信息失败"
+  release_tag="$(extract_shadowtls_tag "$release_json")"
+  download_url="$(extract_shadowtls_download_url "$release_json" "$asset")"
+  [[ -n "$download_url" ]] || die "未找到匹配当前架构的 ShadowTLS 二进制: ${asset}"
+
+  tmp_bin="/tmp/${asset}.$$"
+  log "下载 ShadowTLS ${release_tag:-latest}: ${download_url}"
+  curl -fL --retry 3 --retry-delay 2 -o "$tmp_bin" "$download_url"
+  install -m 0755 "$tmp_bin" "$STLS_BIN_PATH"
+  rm -f "$tmp_bin"
+  log "ShadowTLS 二进制已安装: ${STLS_BIN_PATH}"
+}
+
+write_stls_env() {
+  local env_dir
+  env_dir="$(dirname "$STLS_ENV_PATH")"
+  mkdir -p "$env_dir"
+
+  cat > "$STLS_ENV_PATH" <<EOF
+STLS_VERSION=${STLS_VERSION}
+STLS_LISTEN=0.0.0.0:${STLS_PORT}
+STLS_PASSWORD=${STLS_PASSWORD}
+STLS_SNI=${STLS_SNI}
+STLS_UPSTREAM=${STLS_UPSTREAM}
+STLS_BACKEND_LABEL=${STLS_BACKEND_LABEL}
+STLS_BACKEND_MAJOR=${STLS_BACKEND_MAJOR}
+EOF
+  chmod 600 "$STLS_ENV_PATH"
+}
+
+write_stls_service() {
+  cat > "$STLS_SERVICE_PATH" <<EOF
+[Unit]
+Description=ShadowTLS Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=${STLS_ENV_PATH}
+ExecStart=${STLS_BIN_PATH} --v\${STLS_VERSION} server --listen \${STLS_LISTEN} --server \${STLS_UPSTREAM} --tls \${STLS_SNI} --password \${STLS_PASSWORD}
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=512000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+print_stls_node_example() {
+  local pub_ip="$1"
+  local region_tag="$2"
+  local port="$3"
+  local backend_psk="$4"
+  local backend_major="$5"
+  local node_v4 node_v5
+
+  node_v4="${region_tag}-snellv4"
+  node_v5="${region_tag}-snellv5"
+
+  if [[ -z "$backend_psk" || "$backend_major" == "unknown" ]]; then
+    cat <<EOF
+未能自动识别上游 Snell 的 PSK/版本，请手动替换:
+  ${node_v4} = snell, ${pub_ip}, ${port}, psk=<upstream-psk>, version=4, reuse=true, tfo=true, shadow-tls-password=${STLS_PASSWORD}, shadow-tls-sni=${STLS_SNI}, shadow-tls-version=${STLS_VERSION}
+  ${node_v5} = snell, ${pub_ip}, ${port}, psk=<upstream-psk>, version=5, reuse=true, tfo=true, shadow-tls-password=${STLS_PASSWORD}, shadow-tls-sni=${STLS_SNI}, shadow-tls-version=${STLS_VERSION}
+EOF
+    return 0
+  fi
+
+  if [[ "$backend_major" == "5" ]]; then
+    cat <<EOF
+${node_v5} = snell, ${pub_ip}, ${port}, psk=${backend_psk}, version=5, reuse=true, tfo=true, shadow-tls-password=${STLS_PASSWORD}, shadow-tls-sni=${STLS_SNI}, shadow-tls-version=${STLS_VERSION}
+${node_v4} = snell, ${pub_ip}, ${port}, psk=${backend_psk}, version=4, reuse=true, tfo=true, shadow-tls-password=${STLS_PASSWORD}, shadow-tls-sni=${STLS_SNI}, shadow-tls-version=${STLS_VERSION}
+EOF
+  else
+    cat <<EOF
+${node_v4} = snell, ${pub_ip}, ${port}, psk=${backend_psk}, version=4, reuse=true, tfo=true, shadow-tls-password=${STLS_PASSWORD}, shadow-tls-sni=${STLS_SNI}, shadow-tls-version=${STLS_VERSION}
+EOF
+  fi
+}
+
+run_stls_deploy_flow() {
+  local pub_ip region_tag current_stls_port
+  command -v systemctl >/dev/null 2>&1 || die "stls-deploy 需要 systemd/systemctl"
+
+  current_stls_port=""
+  if [[ -f "$STLS_ENV_PATH" ]]; then
+    current_stls_port="$(sed -n 's/^STLS_LISTEN=.*:\([0-9][0-9]*\)$/\1/p' "$STLS_ENV_PATH" | head -n 1)"
+  fi
+  if is_port_in_use "$STLS_PORT"; then
+    if ! systemctl is-active --quiet shadowtls.service || [[ "$current_stls_port" != "$STLS_PORT" ]]; then
+      die "ShadowTLS 端口已被占用: ${STLS_PORT}"
+    fi
+  fi
+
+  install_deps
+  install_shadowtls_binary
+  write_stls_env
+  write_stls_service
+
+  systemctl daemon-reload
+  systemctl enable shadowtls.service >/dev/null 2>&1 || true
+  if systemctl is-active --quiet shadowtls.service; then
+    systemctl restart shadowtls.service
+  else
+    systemctl start shadowtls.service
+  fi
+  try_configure_firewall_port "$STLS_PORT"
+
+  pub_ip="$(get_public_ip)"
+  if [[ -z "$pub_ip" ]]; then
+    pub_ip="<你的服务器IP>"
+  fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+
+  cat <<EOF
+
+========================================
+ShadowTLS 部署完成
+========================================
+服务: shadowtls.service
+二进制: ${STLS_BIN_PATH}
+环境文件: ${STLS_ENV_PATH}
+监听端口: ${STLS_PORT}
+上游: ${STLS_UPSTREAM} (${STLS_BACKEND_LABEL})
+密码: ${STLS_PASSWORD}
+SNI: ${STLS_SNI}
+版本: v${STLS_VERSION}
+
+状态查看:
+  systemctl status shadowtls.service --no-pager
+  journalctl -u shadowtls.service -f
+
+Surge 节点示例（Snell + ShadowTLS）:
+$(print_stls_node_example "$pub_ip" "$region_tag" "$STLS_PORT" "$STLS_BACKEND_PSK" "$STLS_BACKEND_MAJOR")
+EOF
+}
+
+run_stls_status_flow() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl status shadowtls.service --no-pager || true
+  else
+    log "未检测到 systemctl"
+  fi
+
+  if [[ -f "$STLS_ENV_PATH" ]]; then
+    # shellcheck disable=SC1090
+    source "$STLS_ENV_PATH"
+    cat <<EOF
+
+========================================
+ShadowTLS 配置
+========================================
+监听: ${STLS_LISTEN:-unknown}
+上游: ${STLS_UPSTREAM:-unknown}
+SNI: ${STLS_SNI:-unknown}
+版本: ${STLS_VERSION:-unknown}
+EOF
+  else
+    log "未找到 ShadowTLS 环境文件: ${STLS_ENV_PATH}"
+  fi
+}
+
+run_stls_remove_flow() {
+  local remove_bin_answer
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl list-unit-files | grep -Eq '^shadowtls\.service'; then
+      systemctl stop shadowtls.service || true
+      systemctl disable shadowtls.service || true
+    fi
+  fi
+
+  rm -f "$STLS_SERVICE_PATH"
+  rm -f "$STLS_ENV_PATH"
+
+  if [[ -f "$STLS_BIN_PATH" ]]; then
+    if [[ -t 0 ]]; then
+      read -r -p "是否删除 ShadowTLS 二进制 ${STLS_BIN_PATH} ? [y/N]: " remove_bin_answer
+      case "${remove_bin_answer:-N}" in
+        y|Y|yes|YES) rm -f "$STLS_BIN_PATH" ;;
+        *) ;;
+      esac
+    else
+      rm -f "$STLS_BIN_PATH"
+    fi
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+  fi
+  log "ShadowTLS 已移除"
+}
+
 confirm_uninstall() {
   if [[ -t 0 ]]; then
     local answer
@@ -1297,6 +1713,14 @@ run_uninstall_flow() {
   rm -f "$VERSION_MARK_PATH"
   rm -f "$BBR_SYSCTL_PATH"
   rm -rf "$DOCKER_DIR"
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl list-unit-files | grep -Eq '^shadowtls\.service'; then
+      systemctl stop shadowtls.service || true
+      systemctl disable shadowtls.service || true
+    fi
+  fi
+  rm -f "$STLS_SERVICE_PATH" "$STLS_ENV_PATH"
+  rm -f "$STLS_BIN_PATH"
 
   if [[ -f "$BIN_PATH" ]]; then
     rm -f "$BIN_PATH"
@@ -1347,6 +1771,9 @@ main() {
   if [[ "$ACTION" == "install" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
     resolve_install_port
   fi
+  if [[ "$ACTION" == "stls-deploy" ]]; then
+    resolve_stls_options
+  fi
 
   case "$ACTION" in
     install) run_install_flow ;;
@@ -1365,6 +1792,9 @@ main() {
     docker-deploy) run_docker_deploy_flow ;;
     docker-remove) run_docker_remove_flow ;;
     docker-status) run_docker_status_flow ;;
+    stls-deploy) run_stls_deploy_flow ;;
+    stls-remove) run_stls_remove_flow ;;
+    stls-status) run_stls_status_flow ;;
     *) die "未知操作: $ACTION" ;;
   esac
 }

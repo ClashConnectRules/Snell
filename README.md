@@ -41,6 +41,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 - Profile-based multi-user port management: `profile-add`, `profile-list`, `profile-remove`
 - BBR switches: `bbr-enable`, `bbr-disable`, `bbr-status`
 - Docker deployment mode: `docker-deploy`, `docker-remove`, `docker-status`
+- ShadowTLS deployment: `stls-deploy`, `stls-status`, `stls-remove` (with interactive upstream selection)
 
 ## Supported Versions and Architectures
 
@@ -189,6 +190,24 @@ Remove Docker mode:
 sudo bash install_snell.sh --action docker-remove
 ```
 
+Deploy ShadowTLS in front of Snell:
+
+```bash
+sudo bash install_snell.sh --action stls-deploy
+```
+
+Show ShadowTLS status:
+
+```bash
+sudo bash install_snell.sh --action stls-status
+```
+
+Remove ShadowTLS:
+
+```bash
+sudo bash install_snell.sh --action stls-remove
+```
+
 Pin exact version:
 
 ```bash
@@ -199,7 +218,7 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## Arguments
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status>
+--action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status>
                           Select operation
 --name <profile_name>       Profile name for profile actions
 --remove-script             Delete current script after uninstall
@@ -210,6 +229,11 @@ sudo bash install_snell.sh --action update --version 5.0.1
 --ipv6 <true|false>         Enable IPv6, default false
 --dns "<dns1,dns2>"         Optional DNS parameter
 --egress-interface <iface>  Optional egress interface (v5 only)
+--stls-version <2|3>        ShadowTLS version (default 3)
+--stls-port <port>          ShadowTLS listen port (default 443)
+--stls-password <password>  ShadowTLS password (auto if omitted)
+--stls-sni <sni>            ShadowTLS SNI (default gateway.icloud.com)
+--stls-upstream <ip:port>   ShadowTLS upstream Snell address (auto-select if omitted)
 --skip-firewall             Skip firewall setup
 -h, --help                  Show help
 ```
@@ -219,6 +243,9 @@ sudo bash install_snell.sh --action update --version 5.0.1
 - Binary: `/usr/local/bin/snell-server`
 - Config: `/etc/snell/snell-server.conf`
 - Service: `/etc/systemd/system/snell.service`
+- ShadowTLS binary: `/usr/local/bin/shadow-tls`
+- ShadowTLS env: `/etc/snell/shadowtls.env`
+- ShadowTLS service: `/etc/systemd/system/shadowtls.service`
 
 ## Operations
 
