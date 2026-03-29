@@ -36,6 +36,7 @@
 - 自动生成并启动 `systemd` 服务 `snell.service`
 - 自动尝试放行防火墙（`ufw` / `firewalld`）
 - 更新模式保留原配置，并备份旧二进制
+- 节点名统一为 IP 地区前缀：`<region>-snellv4` / `<region>-snellv5`
 
 ## 支持版本与架构
 
@@ -154,13 +155,13 @@ journalctl -u snell.service -f
 Snell v4:
 
 ```ini
-SnellV4 = snell, <server_ip>, <port>, psk=<psk>, version=4, reuse=true, tfo=true
+<region>-snellv4 = snell, <server_ip>, <port>, psk=<psk>, version=4, reuse=true, tfo=true
 ```
 
 Snell v5:
 
 ```ini
-SnellV5 = snell, <server_ip>, <port>, psk=<psk>, version=5, reuse=true, tfo=true
+<region>-snellv5 = snell, <server_ip>, <port>, psk=<psk>, version=5, reuse=true, tfo=true
 ```
 
 ## FAQ

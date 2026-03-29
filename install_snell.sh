@@ -452,12 +452,64 @@ get_public_ip() {
   echo "$ip"
 }
 
+json_value() {
+  local json="$1"
+  local key="$2"
+  printf '%s' "$json" | tr -d '\n' | sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p"
+}
+
+sanitize_region_tag() {
+  local raw="$1"
+  printf '%s' "$raw" \
+    | sed 's/[[:space:]]\+/-/g; s/[^A-Za-z0-9._-]/-/g; s/--\+/-/g; s/^-//; s/-$//'
+}
+
+get_ip_region_tag() {
+  local ip body country region tag
+  ip="$1"
+  tag=""
+
+  if [[ -z "$ip" || "$ip" == "<你的服务器IP>" ]]; then
+    echo "region"
+    return 0
+  fi
+
+  body="$(curl -fsS --max-time 4 "https://ipapi.co/${ip}/json/" 2>/dev/null || true)"
+  country="$(json_value "$body" "country_name")"
+  region="$(json_value "$body" "region")"
+
+  if [[ -z "$country" && -z "$region" ]]; then
+    body="$(curl -fsS --max-time 4 "https://ipwho.is/${ip}" 2>/dev/null || true)"
+    country="$(json_value "$body" "country")"
+    region="$(json_value "$body" "region")"
+  fi
+
+  if [[ -n "$country" && -n "$region" && "$country" != "$region" ]]; then
+    tag="${country}-${region}"
+  elif [[ -n "$country" ]]; then
+    tag="$country"
+  elif [[ -n "$region" ]]; then
+    tag="$region"
+  else
+    tag="$ip"
+  fi
+
+  tag="$(sanitize_region_tag "$tag")"
+  if [[ -z "$tag" ]]; then
+    tag="$ip"
+  fi
+  echo "$tag"
+}
+
 print_summary() {
-  local pub_ip
+  local pub_ip region_tag node_v4 node_v5
   pub_ip="$(get_public_ip)"
   if [[ -z "$pub_ip" ]]; then
     pub_ip="<你的服务器IP>"
   fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+  node_v4="${region_tag}-snellv4"
+  node_v5="${region_tag}-snellv5"
 
   cat <<EOF
 
@@ -475,22 +527,24 @@ IPv6: ${IPV6}
 常用命令:
   systemctl restart snell.service
   journalctl -u snell.service -f
+节点名称前缀:
+  ${region_tag}
 EOF
 
   if [[ "$SNELL_MAJOR" == "5" ]]; then
     cat <<EOF
 
 Surge 节点示例（Snell v5）:
-  SnellV5 = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=5, reuse=true, tfo=true
+  ${node_v5} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=5, reuse=true, tfo=true
 
 兼容模式（客户端按 v4 连接）:
-  SnellV4 = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=4, reuse=true, tfo=true
+  ${node_v4} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=4, reuse=true, tfo=true
 EOF
   else
     cat <<EOF
 
 Surge 节点示例（Snell v4）:
-  SnellV4 = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=4, reuse=true, tfo=true
+  ${node_v4} = snell, ${pub_ip}, ${PORT}, psk=${PSK}, version=4, reuse=true, tfo=true
 EOF
   fi
 }

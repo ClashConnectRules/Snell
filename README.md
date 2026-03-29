@@ -36,6 +36,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 - Auto-create/start `systemd` service `snell.service`
 - Auto-allow firewall rules (`ufw` / `firewalld`) when available
 - Update mode keeps existing config and backs up previous binary
+- Node name format uses IP region prefix: `<region>-snellv4` / `<region>-snellv5`
 
 ## Supported Versions and Architectures
 
@@ -154,13 +155,13 @@ journalctl -u snell.service -f
 Snell v4:
 
 ```ini
-SnellV4 = snell, <server_ip>, <port>, psk=<psk>, version=4, reuse=true, tfo=true
+<region>-snellv4 = snell, <server_ip>, <port>, psk=<psk>, version=4, reuse=true, tfo=true
 ```
 
 Snell v5:
 
 ```ini
-SnellV5 = snell, <server_ip>, <port>, psk=<psk>, version=5, reuse=true, tfo=true
+<region>-snellv5 = snell, <server_ip>, <port>, psk=<psk>, version=5, reuse=true, tfo=true
 ```
 
 ## FAQ
