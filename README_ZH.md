@@ -76,16 +76,9 @@ bash install_snell.sh
 ### 方式 2：脚本直链一键执行
 
 ```bash
-for u in \
-"https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh" \
-"https://cdn.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh" \
-"https://fastly.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh"
-do
-  if curl -fsSL "$u" -o install_snell.sh && grep -q '^#!/usr/bin/env bash' install_snell.sh; then
-    chmod +x install_snell.sh && bash install_snell.sh
-    break
-  fi
-done
+curl -fsSL https://cdn.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh -o install_snell.sh \
+  || curl -fsSL https://fastly.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh -o install_snell.sh
+grep -q '^#!/usr/bin/env bash' install_snell.sh && chmod +x install_snell.sh && bash install_snell.sh
 ```
 
 如果当前用户不是 root，请把 `bash install_snell.sh` 改成 `sudo bash install_snell.sh`。

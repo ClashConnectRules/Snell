@@ -76,16 +76,9 @@ If your current user is not root, run `sudo bash install_snell.sh`.
 ### Option 2: Run via direct script URL
 
 ```bash
-for u in \
-"https://raw.githubusercontent.com/ClashConnectRules/Snell/main/install_snell.sh" \
-"https://cdn.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh" \
-"https://fastly.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh"
-do
-  if curl -fsSL "$u" -o install_snell.sh && grep -q '^#!/usr/bin/env bash' install_snell.sh; then
-    chmod +x install_snell.sh && bash install_snell.sh
-    break
-  fi
-done
+curl -fsSL https://cdn.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh -o install_snell.sh \
+  || curl -fsSL https://fastly.jsdelivr.net/gh/ClashConnectRules/Snell@main/install_snell.sh -o install_snell.sh
+grep -q '^#!/usr/bin/env bash' install_snell.sh && chmod +x install_snell.sh && bash install_snell.sh
 ```
 
 If your current user is not root, replace `bash install_snell.sh` with `sudo bash install_snell.sh`.
