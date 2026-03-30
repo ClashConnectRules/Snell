@@ -8,6 +8,7 @@ SNELL_MAJOR=""
 ACTION=""
 REMOVE_SCRIPT="false"
 PROFILE_NAME=""
+PRINT_CLIENT="false"
 PORT=""
 PORT_SET_BY_USER="false"
 PSK=""
@@ -50,9 +51,10 @@ Snell 一键安装脚本（Linux + systemd）
   # 若检测到已安装且未指定 --action，默认走 update
 
 选项:
-  --action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status>
+  --action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
                               选择操作（安装/更新/卸载/配置/重启/状态/脚本更新/多用户/BBR/Docker/ShadowTLS）
   --name <profile_name>       Profile 名称（多用户动作时使用）
+  --print-client              仅输出当前客户端配置（不安装/不更新）
   --remove-script             卸载后删除当前脚本文件
   --major <4|5>               选择安装主版本（推荐）
   --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
@@ -89,6 +91,8 @@ Snell 一键安装脚本（Linux + systemd）
   sudo bash install_snell.sh --action stls-deploy
   sudo bash install_snell.sh --action stls-status
   sudo bash install_snell.sh --action stls-remove
+  sudo bash install_snell.sh --print-client
+  sudo bash install_snell.sh --print-client --name hk-a
   sudo bash install_snell.sh --major 4
   sudo bash install_snell.sh --major 5 --port 22333
   sudo bash install_snell.sh --port 22333 --ipv6 false
@@ -119,6 +123,8 @@ parse_args() {
         ACTION="${2:-}"; shift 2 ;;
       --name)
         PROFILE_NAME="${2:-}"; shift 2 ;;
+      --print-client)
+        PRINT_CLIENT="true"; shift ;;
       --remove-script)
         REMOVE_SCRIPT="true"; shift ;;
       --major)
@@ -158,10 +164,15 @@ parse_args() {
 resolve_action_choice() {
   local installed default_choice prompt_hint
 
+  if [[ -z "$ACTION" && "$PRINT_CLIENT" == "true" ]]; then
+    ACTION="print-client"
+    return 0
+  fi
+
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
-      install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status) return 0 ;;
-      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status/stls-deploy/stls-remove/stls-status" ;;
+      install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client) return 0 ;;
+      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status/stls-deploy/stls-remove/stls-status/print-client" ;;
     esac
   fi
 
@@ -202,8 +213,9 @@ resolve_action_choice() {
     printf ' 17) ShadowTLS: 部署\n'
     printf ' 18) ShadowTLS: 移除\n'
     printf ' 19) ShadowTLS: 查看状态\n'
+    printf ' 20) 输出客户端配置\n'
     while true; do
-      read -r -p "请输入 1-19 ${prompt_hint}: " choice
+      read -r -p "请输入 1-20 ${prompt_hint}: " choice
       choice="${choice:-$default_choice}"
       case "$choice" in
         1)
@@ -282,8 +294,12 @@ resolve_action_choice() {
           ACTION="stls-status"
           break
           ;;
+        20)
+          ACTION="print-client"
+          break
+          ;;
         *)
-          printf '输入无效，请输入 1 到 19。\n'
+          printf '输入无效，请输入 1 到 20。\n'
           ;;
       esac
     done
@@ -592,6 +608,78 @@ get_installed_major() {
     esac
   fi
   echo "unknown"
+}
+
+major_from_version_text() {
+  local ver="$1"
+  case "$ver" in
+    4.*|4) echo "4" ;;
+    5.*|5) echo "5" ;;
+    *) echo "unknown" ;;
+  esac
+}
+
+get_profile_major() {
+  local name="$1"
+  local version_path ver
+  version_path="$(profile_version_path "$name")"
+  if [[ -f "$version_path" ]]; then
+    ver="$(tr -d '[:space:]' < "$version_path")"
+    major_from_version_text "$ver"
+    return 0
+  fi
+  echo "unknown"
+}
+
+is_local_host() {
+  local host="$1"
+  case "$host" in
+    127.0.0.1|localhost|0.0.0.0|::1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_stls_backend_by_upstream() {
+  local upstream="$1"
+  local host port listen main_port conf name conf_port psk
+
+  STLS_BACKEND_PSK=""
+  STLS_BACKEND_MAJOR="unknown"
+  STLS_BACKEND_LABEL="manual"
+
+  [[ "$upstream" == *:* ]] || return 0
+  host="${upstream%:*}"
+  port="${upstream##*:}"
+  [[ "$port" =~ ^[0-9]+$ ]] || return 0
+  is_local_host "$host" || return 0
+
+  if [[ -f "$CONFIG_PATH" ]]; then
+    listen="$(config_get_value_from_file "$CONFIG_PATH" "listen")"
+    main_port="${listen##*:}"
+    if [[ "$main_port" == "$port" ]]; then
+      psk="$(config_get_value_from_file "$CONFIG_PATH" "psk")"
+      STLS_BACKEND_PSK="$psk"
+      STLS_BACKEND_MAJOR="$(get_installed_major)"
+      STLS_BACKEND_LABEL="main(snell.service)"
+      return 0
+    fi
+  fi
+
+  if [[ -d "$PROFILES_DIR" ]]; then
+    for conf in "$PROFILES_DIR"/*.conf; do
+      [[ -e "$conf" ]] || continue
+      name="$(basename "$conf" .conf)"
+      listen="$(config_get_value_from_file "$conf" "listen")"
+      conf_port="${listen##*:}"
+      if [[ "$conf_port" == "$port" ]]; then
+        psk="$(config_get_value_from_file "$conf" "psk")"
+        STLS_BACKEND_PSK="$psk"
+        STLS_BACKEND_MAJOR="$(get_profile_major "$name")"
+        STLS_BACKEND_LABEL="profile:${name}"
+        return 0
+      fi
+    done
+  fi
 }
 
 profile_name_valid() {
@@ -1098,6 +1186,121 @@ run_status_flow() {
       ss -lntup | grep -E "[.:]${port}[[:space:]]" || true
     fi
   fi
+}
+
+print_direct_node_example() {
+  local node_name="$1"
+  local pub_ip="$2"
+  local port="$3"
+  local psk="$4"
+  local major="$5"
+
+  if [[ "$major" == "5" ]]; then
+    echo "  ${node_name} = snell, ${pub_ip}, ${port}, psk=${psk}, version=5, reuse=true, tfo=true"
+  elif [[ "$major" == "4" ]]; then
+    echo "  ${node_name} = snell, ${pub_ip}, ${port}, psk=${psk}, version=4, reuse=true, tfo=true"
+  else
+    echo "  ${node_name}-snellv4 = snell, ${pub_ip}, ${port}, psk=${psk}, version=4, reuse=true, tfo=true"
+    echo "  ${node_name}-snellv5 = snell, ${pub_ip}, ${port}, psk=${psk}, version=5, reuse=true, tfo=true"
+  fi
+}
+
+run_print_client_flow() {
+  local pub_ip region_tag found_any listen psk port major
+  local conf name node_name stls_listen stls_port stls_upstream stls_password stls_sni stls_version
+  found_any="false"
+
+  pub_ip="$(get_public_ip)"
+  if [[ -z "$pub_ip" ]]; then
+    pub_ip="<你的服务器IP>"
+  fi
+  region_tag="$(get_ip_region_tag "$pub_ip")"
+
+  echo
+  echo "========================================"
+  echo "客户端配置输出（Surge）"
+  echo "========================================"
+  echo "服务器 IP: ${pub_ip}"
+  echo "节点前缀: ${region_tag}"
+
+  if [[ -f "$CONFIG_PATH" ]] && { [[ -z "$PROFILE_NAME" ]] || [[ "$PROFILE_NAME" == "main" ]]; }; then
+    listen="$(config_get_value_from_file "$CONFIG_PATH" "listen")"
+    psk="$(config_get_value_from_file "$CONFIG_PATH" "psk")"
+    port="${listen##*:}"
+    major="$(get_installed_major)"
+    if [[ -n "$port" && "$port" != "$listen" && -n "$psk" ]]; then
+      found_any="true"
+      echo
+      echo "[Main] snell.service"
+      if [[ "$major" == "4" || "$major" == "5" ]]; then
+        node_name="${region_tag}-snellv${major}"
+      else
+        node_name="${region_tag}"
+      fi
+      print_direct_node_example "$node_name" "$pub_ip" "$port" "$psk" "$major"
+    fi
+  fi
+
+  if [[ -d "$PROFILES_DIR" ]]; then
+    for conf in "$PROFILES_DIR"/*.conf; do
+      [[ -e "$conf" ]] || continue
+      name="$(basename "$conf" .conf)"
+      if [[ -n "$PROFILE_NAME" && "$PROFILE_NAME" != "$name" ]]; then
+        continue
+      fi
+      listen="$(config_get_value_from_file "$conf" "listen")"
+      psk="$(config_get_value_from_file "$conf" "psk")"
+      port="${listen##*:}"
+      major="$(get_profile_major "$name")"
+      if [[ -n "$port" && "$port" != "$listen" && -n "$psk" ]]; then
+        found_any="true"
+        if [[ "$major" == "4" || "$major" == "5" ]]; then
+          node_name="${region_tag}-${name}-snellv${major}"
+        else
+          node_name="${region_tag}-${name}"
+        fi
+        echo
+        echo "[Profile] ${name}"
+        print_direct_node_example "$node_name" "$pub_ip" "$port" "$psk" "$major"
+      fi
+    done
+  fi
+
+  if [[ -f "$STLS_ENV_PATH" ]]; then
+    stls_listen="$(sed -n 's/^STLS_LISTEN=//p' "$STLS_ENV_PATH" | head -n 1)"
+    stls_upstream="$(sed -n 's/^STLS_UPSTREAM=//p' "$STLS_ENV_PATH" | head -n 1)"
+    stls_password="$(sed -n 's/^STLS_PASSWORD=//p' "$STLS_ENV_PATH" | head -n 1)"
+    stls_sni="$(sed -n 's/^STLS_SNI=//p' "$STLS_ENV_PATH" | head -n 1)"
+    stls_version="$(sed -n 's/^STLS_VERSION=//p' "$STLS_ENV_PATH" | head -n 1)"
+    stls_port="${stls_listen##*:}"
+
+    if [[ -n "$stls_port" && "$stls_port" != "$stls_listen" ]]; then
+      resolve_stls_backend_by_upstream "$stls_upstream"
+      found_any="true"
+      echo
+      echo "[ShadowTLS] shadowtls.service"
+      echo "  upstream: ${stls_upstream:-unknown} (${STLS_BACKEND_LABEL})"
+      STLS_PASSWORD="${stls_password:-<stls-password>}"
+      STLS_SNI="${stls_sni:-gateway.icloud.com}"
+      STLS_VERSION="${stls_version:-3}"
+      print_stls_node_example "$pub_ip" "$region_tag" "$stls_port" "$STLS_BACKEND_PSK" "$STLS_BACKEND_MAJOR"
+    fi
+  fi
+
+  if [[ "$found_any" != "true" ]]; then
+    if [[ -n "$PROFILE_NAME" ]]; then
+      die "未找到可用配置（name=${PROFILE_NAME}）"
+    fi
+    die "未找到可用配置，请先安装 Snell 或创建 Profile"
+  fi
+
+  cat <<EOF
+
+常用命令:
+  bash install_snell.sh --print-client
+  bash install_snell.sh --print-client --name main
+  bash install_snell.sh --print-client --name <profile_name>
+EOF
 }
 
 run_script_update_flow() {
@@ -1795,6 +1998,7 @@ main() {
     stls-deploy) run_stls_deploy_flow ;;
     stls-remove) run_stls_remove_flow ;;
     stls-status) run_stls_status_flow ;;
+    print-client) run_print_client_flow ;;
     *) die "未知操作: $ACTION" ;;
   esac
 }

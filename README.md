@@ -42,6 +42,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 - BBR switches: `bbr-enable`, `bbr-disable`, `bbr-status`
 - Docker deployment mode: `docker-deploy`, `docker-remove`, `docker-status`
 - ShadowTLS deployment: `stls-deploy`, `stls-status`, `stls-remove` (with interactive upstream selection)
+- Reprint client nodes at any time: `--print-client` (no reinstall needed)
 
 ## Supported Versions and Architectures
 
@@ -208,6 +209,18 @@ Remove ShadowTLS:
 sudo bash install_snell.sh --action stls-remove
 ```
 
+Reprint all current client nodes:
+
+```bash
+sudo bash install_snell.sh --print-client
+```
+
+Reprint one specific profile:
+
+```bash
+sudo bash install_snell.sh --print-client --name hk-a
+```
+
 Pin exact version:
 
 ```bash
@@ -218,9 +231,10 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## Arguments
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status>
+--action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
                           Select operation
 --name <profile_name>       Profile name for profile actions
+--print-client              Print current client nodes only
 --remove-script             Delete current script after uninstall
 --major <4|5>               Select major version
 --version <ver>             Exact version (e.g. 4.1.1 / 5.0.1)
@@ -269,6 +283,12 @@ Snell v5:
 <region>-snellv5 = snell, <server_ip>, <port>, psk=<psk>, version=5, reuse=true, tfo=true
 ```
 
+Snell + ShadowTLS (v3):
+
+```ini
+<region>-snellv5 = snell, <server_ip>, <stls_port>, psk=<psk>, version=5, reuse=true, tfo=true, shadow-tls-password=<stls_password>, shadow-tls-sni=<stls_sni>, shadow-tls-version=3
+```
+
 ## FAQ
 
 Q: Does update overwrite my port/PSK?  
@@ -282,6 +302,9 @@ A: Check both cloud security groups and local firewall. Make sure TCP/UDP for th
 
 Q: How to run in CI/non-interactive shell?  
 A: Pass `--action` and `--major` (or `--version`) explicitly.
+
+Q: How do I reprint nodes without reinstalling?  
+A: Run `sudo bash install_snell.sh --print-client` (or add `--name <profile_name>`).
 
 ## Contributing
 

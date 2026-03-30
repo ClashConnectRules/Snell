@@ -42,6 +42,7 @@
 - BBR 开关：`bbr-enable`、`bbr-disable`、`bbr-status`
 - Docker 部署模式：`docker-deploy`、`docker-remove`、`docker-status`
 - ShadowTLS 部署：`stls-deploy`、`stls-status`、`stls-remove`（支持交互选择上游）
+- 支持随时重打节点：`--print-client`（无需重装）
 
 ## 支持版本与架构
 
@@ -208,6 +209,18 @@ sudo bash install_snell.sh --action stls-status
 sudo bash install_snell.sh --action stls-remove
 ```
 
+重打当前所有客户端节点:
+
+```bash
+sudo bash install_snell.sh --print-client
+```
+
+仅重打指定 Profile 节点:
+
+```bash
+sudo bash install_snell.sh --print-client --name hk-a
+```
+
 指定精确版本:
 
 ```bash
@@ -218,9 +231,10 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## 参数说明
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status>
+--action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
                           选择操作（安装/更新/卸载/查看配置/重启/状态/更新脚本/多用户/BBR/Docker/ShadowTLS）
 --name <profile_name>       Profile 名称（多用户动作时使用）
+--print-client              仅输出当前客户端节点
 --remove-script             卸载后删除当前脚本文件
 --major <4|5>               选择主版本
 --version <ver>             指定精确版本（如 4.1.1 / 5.0.1）
@@ -269,6 +283,12 @@ Snell v5:
 <region>-snellv5 = snell, <server_ip>, <port>, psk=<psk>, version=5, reuse=true, tfo=true
 ```
 
+Snell + ShadowTLS (v3):
+
+```ini
+<region>-snellv5 = snell, <server_ip>, <stls_port>, psk=<psk>, version=5, reuse=true, tfo=true, shadow-tls-password=<stls_password>, shadow-tls-sni=<stls_sni>, shadow-tls-version=3
+```
+
 ## FAQ
 
 Q: 更新会覆盖我的端口和 PSK 吗？  
@@ -282,6 +302,9 @@ A: 请同时检查云厂商安全组和系统防火墙，确保对应端口的 T
 
 Q: 非交互环境怎么用？  
 A: 请显式传入 `--action` 与 `--major` 或 `--version`。
+
+Q: 不重装怎么重新输出节点？  
+A: 使用 `sudo bash install_snell.sh --print-client`，或加 `--name <profile_name>`。
 
 ## 贡献指南
 
