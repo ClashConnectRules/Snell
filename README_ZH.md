@@ -29,6 +29,7 @@
 ## 功能特性
 
 - 交互式菜单：先选 `安装`、`更新` 或 `卸载`
+- 分层菜单（按类目进入子菜单），管理更清晰
 - 检测到已安装时，默认操作自动切到 `更新`
 - 交互式版本：再选 Snell `v4` 或 `v5`
 - 自动识别架构并下载官方二进制
@@ -43,6 +44,7 @@
 - Docker 部署模式：`docker-deploy`、`docker-remove`、`docker-status`
 - ShadowTLS 部署：`stls-deploy`、`stls-status`、`stls-remove`（支持交互选择上游）
 - 支持随时重打节点：`--print-client`（无需重装）
+- 菜单顶部展示运行状态与系统资源占用（CPU / 内存 / 磁盘）
 
 ## 支持版本与架构
 

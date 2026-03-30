@@ -161,8 +161,333 @@ parse_args() {
   done
 }
 
+is_snell_installed() {
+  if [[ -f "$CONFIG_PATH" || -f "$BIN_PATH" || -f "$SERVICE_PATH" ]]; then
+    return 0
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl list-unit-files --type=service 2>/dev/null | awk '{print $1}' | grep -Fxq 'snell.service'
+    return $?
+  fi
+  return 1
+}
+
+unit_state() {
+  local unit="$1"
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "no-systemd"
+    return 0
+  fi
+  if systemctl is-active --quiet "$unit" 2>/dev/null; then
+    echo "active"
+    return 0
+  fi
+  if systemctl list-unit-files --type=service 2>/dev/null | awk '{print $1}' | grep -Fxq "$unit"; then
+    echo "inactive"
+  else
+    echo "not-installed"
+  fi
+}
+
+count_profiles() {
+  local count conf
+  count=0
+  if [[ -d "$PROFILES_DIR" ]]; then
+    for conf in "$PROFILES_DIR"/*.conf; do
+      [[ -e "$conf" ]] || continue
+      count=$((count + 1))
+    done
+  fi
+  echo "$count"
+}
+
+count_active_profile_services() {
+  local c
+  c=0
+  if command -v systemctl >/dev/null 2>&1; then
+    c="$(systemctl list-units --all --type=service 'snell@*.service' --no-legend 2>/dev/null | awk '$3=="active" && $4=="running"{c++} END{print c+0}')"
+  fi
+  echo "${c:-0}"
+}
+
+format_kb_human() {
+  local kb="$1"
+  awk -v kb="$kb" 'BEGIN{
+    if (kb >= 1048576) printf "%.1fG", kb/1048576;
+    else if (kb >= 1024) printf "%.1fM", kb/1024;
+    else printf "%dK", kb;
+  }'
+}
+
+get_cpu_usage_pct() {
+  local user1 nice1 sys1 idle1 iow1 irq1 sirq1 stl1 total1 idleall1
+  local user2 nice2 sys2 idle2 iow2 irq2 sirq2 stl2 total2 idleall2
+  local diff_total diff_idle usage
+  if [[ ! -r /proc/stat ]]; then
+    echo "N/A"
+    return 0
+  fi
+  read -r _ user1 nice1 sys1 idle1 iow1 irq1 sirq1 stl1 _ < /proc/stat || { echo "N/A"; return 0; }
+  total1=$((user1 + nice1 + sys1 + idle1 + iow1 + irq1 + sirq1 + stl1))
+  idleall1=$((idle1 + iow1))
+  sleep 0.15
+  read -r _ user2 nice2 sys2 idle2 iow2 irq2 sirq2 stl2 _ < /proc/stat || { echo "N/A"; return 0; }
+  total2=$((user2 + nice2 + sys2 + idle2 + iow2 + irq2 + sirq2 + stl2))
+  idleall2=$((idle2 + iow2))
+  diff_total=$((total2 - total1))
+  diff_idle=$((idleall2 - idleall1))
+  if (( diff_total <= 0 )); then
+    echo "N/A"
+    return 0
+  fi
+  usage=$(( (100 * (diff_total - diff_idle) + diff_total / 2) / diff_total ))
+  echo "${usage}%"
+}
+
+get_mem_usage_summary() {
+  local total avail used pct
+  if [[ ! -r /proc/meminfo ]]; then
+    echo "N/A"
+    return 0
+  fi
+  total="$(awk '/MemTotal:/{print $2}' /proc/meminfo)"
+  avail="$(awk '/MemAvailable:/{print $2}' /proc/meminfo)"
+  if [[ -z "$total" || -z "$avail" || "$total" == "0" ]]; then
+    echo "N/A"
+    return 0
+  fi
+  used=$((total - avail))
+  pct=$(( (used * 100 + total / 2) / total ))
+  echo "$(format_kb_human "$used")/$(format_kb_human "$total") (${pct}%)"
+}
+
+get_disk_usage_summary() {
+  if ! command -v df >/dev/null 2>&1; then
+    echo "N/A"
+    return 0
+  fi
+  df -hP / 2>/dev/null | awk 'NR==2{print $3 "/" $2 " (" $5 ")"}'
+}
+
+get_system_usage_summary() {
+  echo "CPU $(get_cpu_usage_pct) | MEM $(get_mem_usage_summary) | DISK $(get_disk_usage_summary)"
+}
+
+get_snell_runtime_summary() {
+  local state listen major
+  state="$(unit_state 'snell.service')"
+  listen="$(config_get_value_from_file "$CONFIG_PATH" "listen")"
+  major="$(get_installed_major)"
+  echo "service=${state}, version=${major}, listen=${listen:-N/A}"
+}
+
+get_profile_runtime_summary() {
+  local total active
+  total="$(count_profiles)"
+  active="$(count_active_profile_services)"
+  echo "profiles=${total}, active=${active}"
+}
+
+get_bbr_runtime_summary() {
+  local cc qdisc
+  cc="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
+  qdisc="$(sysctl -n net.core.default_qdisc 2>/dev/null || echo unknown)"
+  echo "congestion=${cc}, qdisc=${qdisc}"
+}
+
+get_docker_runtime_summary() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker=not-installed"
+    return 0
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "docker=daemon-down"
+    return 0
+  fi
+  if docker ps --format '{{.Names}}' | grep -Fxq "$DOCKER_CONTAINER_NAME"; then
+    echo "container=running(${DOCKER_CONTAINER_NAME})"
+  elif docker ps -a --format '{{.Names}}' | grep -Fxq "$DOCKER_CONTAINER_NAME"; then
+    echo "container=stopped(${DOCKER_CONTAINER_NAME})"
+  else
+    echo "container=not-created"
+  fi
+}
+
+get_stls_runtime_summary() {
+  local state listen upstream
+  state="$(unit_state 'shadowtls.service')"
+  listen="$(sed -n 's/^STLS_LISTEN=//p' "$STLS_ENV_PATH" 2>/dev/null | head -n 1)"
+  upstream="$(sed -n 's/^STLS_UPSTREAM=//p' "$STLS_ENV_PATH" 2>/dev/null | head -n 1)"
+  echo "service=${state}, listen=${listen:-N/A}, upstream=${upstream:-N/A}"
+}
+
+print_menu_header() {
+  local title="$1"
+  local runtime="$2"
+  echo
+  echo "========================================"
+  echo "$title"
+  echo "运行: ${runtime}"
+  echo "资源: $(get_system_usage_summary)"
+  echo "========================================"
+}
+
+choose_action_from_snell_menu() {
+  local default_action="$1"
+  local default_choice prompt_hint choice
+  if [[ "$default_action" == "update" ]]; then
+    default_choice="2"
+    prompt_hint="（检测到已安装，默认 2 更新）"
+  else
+    default_choice="1"
+    prompt_hint="（默认 1）"
+  fi
+
+  while true; do
+    print_menu_header "Snell 主服务" "$(get_snell_runtime_summary)"
+    echo "  1) 安装 Snell"
+    echo "  2) 更新 Snell（保留现有配置）"
+    echo "  3) 卸载 Snell（删除服务与配置）"
+    echo "  4) 查看当前配置"
+    echo "  5) 重启 Snell 服务"
+    echo "  6) 查看 Snell 状态"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-6 ${prompt_hint}: " choice
+    choice="${choice:-$default_choice}"
+    case "$choice" in
+      1) ACTION="install"; return 0 ;;
+      2) ACTION="update"; return 0 ;;
+      3) ACTION="uninstall"; return 0 ;;
+      4) ACTION="config"; return 0 ;;
+      5) ACTION="restart"; return 0 ;;
+      6) ACTION="status"; return 0 ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 到 6。" ;;
+    esac
+  done
+}
+
+choose_action_from_profile_menu() {
+  local choice
+  while true; do
+    print_menu_header "多用户 Profile 管理" "$(get_profile_runtime_summary)"
+    echo "  1) 新增 Profile 端口"
+    echo "  2) 查看 Profile 列表"
+    echo "  3) 删除 Profile"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-3: " choice
+    case "$choice" in
+      1) ACTION="profile-add"; return 0 ;;
+      2) ACTION="profile-list"; return 0 ;;
+      3) ACTION="profile-remove"; return 0 ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 到 3。" ;;
+    esac
+  done
+}
+
+choose_action_from_bbr_menu() {
+  local choice
+  while true; do
+    print_menu_header "BBR 管理" "$(get_bbr_runtime_summary)"
+    echo "  1) 启用 BBR"
+    echo "  2) 关闭 BBR"
+    echo "  3) 查看 BBR 状态"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-3: " choice
+    case "$choice" in
+      1) ACTION="bbr-enable"; return 0 ;;
+      2) ACTION="bbr-disable"; return 0 ;;
+      3) ACTION="bbr-status"; return 0 ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 到 3。" ;;
+    esac
+  done
+}
+
+choose_action_from_docker_menu() {
+  local choice
+  while true; do
+    print_menu_header "Docker 模式" "$(get_docker_runtime_summary)"
+    echo "  1) 部署 Snell（Docker）"
+    echo "  2) 移除 Snell（Docker）"
+    echo "  3) 查看 Docker 状态"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-3: " choice
+    case "$choice" in
+      1) ACTION="docker-deploy"; return 0 ;;
+      2) ACTION="docker-remove"; return 0 ;;
+      3) ACTION="docker-status"; return 0 ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 到 3。" ;;
+    esac
+  done
+}
+
+choose_action_from_stls_menu() {
+  local choice
+  while true; do
+    print_menu_header "ShadowTLS 管理" "$(get_stls_runtime_summary)"
+    echo "  1) 部署 ShadowTLS"
+    echo "  2) 移除 ShadowTLS"
+    echo "  3) 查看 ShadowTLS 状态"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-3: " choice
+    case "$choice" in
+      1) ACTION="stls-deploy"; return 0 ;;
+      2) ACTION="stls-remove"; return 0 ;;
+      3) ACTION="stls-status"; return 0 ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 到 3。" ;;
+    esac
+  done
+}
+
+choose_action_from_client_menu() {
+  local choice input_name
+  while true; do
+    print_menu_header "客户端配置输出" "$(get_snell_runtime_summary)"
+    echo "  1) 输出全部客户端节点"
+    echo "  2) 仅输出指定 name（main 或 profile）"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-2: " choice
+    case "$choice" in
+      1)
+        PROFILE_NAME=""
+        ACTION="print-client"
+        return 0
+        ;;
+      2)
+        read -r -p "请输入 name（main 或 profile 名）: " input_name
+        input_name="${input_name:-}"
+        [[ -n "$input_name" ]] || { echo "name 不能为空。"; continue; }
+        PROFILE_NAME="$input_name"
+        ACTION="print-client"
+        return 0
+        ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 到 2。" ;;
+    esac
+  done
+}
+
+choose_action_from_script_menu() {
+  local choice
+  while true; do
+    print_menu_header "脚本管理" "script-update=available"
+    echo "  1) 更新本脚本"
+    echo "  0) 返回上一级"
+    read -r -p "请输入 0-1: " choice
+    case "$choice" in
+      1) ACTION="script-update"; return 0 ;;
+      0) return 1 ;;
+      *) echo "输入无效，请输入 0 或 1。" ;;
+    esac
+  done
+}
+
 resolve_action_choice() {
-  local installed default_choice prompt_hint
+  local default_snell_action main_choice
 
   if [[ -z "$ACTION" && "$PRINT_CLIENT" == "true" ]]; then
     ACTION="print-client"
@@ -176,135 +501,47 @@ resolve_action_choice() {
     esac
   fi
 
-  installed="false"
-  if [[ -f "$CONFIG_PATH" || -f "$BIN_PATH" || -f "$SERVICE_PATH" ]]; then
-    installed="true"
-  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -Eq '^snell\.service'; then
-    installed="true"
-  fi
-
-  if [[ "$installed" == "true" ]]; then
-    default_choice="2"
-    prompt_hint="（检测到已安装，默认 2 更新）"
+  if is_snell_installed; then
+    default_snell_action="update"
   else
-    default_choice="1"
-    prompt_hint="（默认 1）"
+    default_snell_action="install"
   fi
 
   if [[ -t 0 ]]; then
-    local choice
-    printf '请选择操作：\n'
-    printf '  1) 安装 Snell\n'
-    printf '  2) 更新 Snell（保留现有配置）\n'
-    printf '  3) 卸载 Snell（删除服务与配置）\n'
-    printf '  4) 查看当前配置\n'
-    printf '  5) 重启 Snell 服务\n'
-    printf '  6) 查看 Snell 状态\n'
-    printf '  7) 更新本脚本\n'
-    printf '  8) 多用户: 新增 Profile 端口\n'
-    printf '  9) 多用户: 查看 Profile 列表\n'
-    printf ' 10) 多用户: 删除 Profile\n'
-    printf ' 11) BBR: 启用\n'
-    printf ' 12) BBR: 关闭\n'
-    printf ' 13) BBR: 状态\n'
-    printf ' 14) Docker: 部署 Snell\n'
-    printf ' 15) Docker: 移除 Snell\n'
-    printf ' 16) Docker: 查看状态\n'
-    printf ' 17) ShadowTLS: 部署\n'
-    printf ' 18) ShadowTLS: 移除\n'
-    printf ' 19) ShadowTLS: 查看状态\n'
-    printf ' 20) 输出客户端配置\n'
     while true; do
-      read -r -p "请输入 1-20 ${prompt_hint}: " choice
-      choice="${choice:-$default_choice}"
-      case "$choice" in
-        1)
-          ACTION="install"
-          break
-          ;;
-        2)
-          ACTION="update"
-          break
-          ;;
-        3)
-          ACTION="uninstall"
-          break
-          ;;
-        4)
-          ACTION="config"
-          break
-          ;;
-        5)
-          ACTION="restart"
-          break
-          ;;
-        6)
-          ACTION="status"
-          break
-          ;;
-        7)
-          ACTION="script-update"
-          break
-          ;;
-        8)
-          ACTION="profile-add"
-          break
-          ;;
-        9)
-          ACTION="profile-list"
-          break
-          ;;
-        10)
-          ACTION="profile-remove"
-          break
-          ;;
-        11)
-          ACTION="bbr-enable"
-          break
-          ;;
-        12)
-          ACTION="bbr-disable"
-          break
-          ;;
-        13)
-          ACTION="bbr-status"
-          break
-          ;;
-        14)
-          ACTION="docker-deploy"
-          break
-          ;;
-        15)
-          ACTION="docker-remove"
-          break
-          ;;
-        16)
-          ACTION="docker-status"
-          break
-          ;;
-        17)
-          ACTION="stls-deploy"
-          break
-          ;;
-        18)
-          ACTION="stls-remove"
-          break
-          ;;
-        19)
-          ACTION="stls-status"
-          break
-          ;;
-        20)
-          ACTION="print-client"
-          break
-          ;;
-        *)
-          printf '输入无效，请输入 1 到 20。\n'
-          ;;
+      print_menu_header "Snell 管理主菜单" "$(get_snell_runtime_summary)"
+      echo "类目状态:"
+      echo "  Snell: $(get_snell_runtime_summary)"
+      echo "  Profile: $(get_profile_runtime_summary)"
+      echo "  BBR: $(get_bbr_runtime_summary)"
+      echo "  Docker: $(get_docker_runtime_summary)"
+      echo "  ShadowTLS: $(get_stls_runtime_summary)"
+      echo
+      echo "请选择类目："
+      echo "  1) Snell 主服务"
+      echo "  2) 多用户 Profile"
+      echo "  3) BBR"
+      echo "  4) Docker"
+      echo "  5) ShadowTLS"
+      echo "  6) 客户端配置"
+      echo "  7) 脚本管理"
+      echo "  0) 退出"
+      read -r -p "请输入 0-7（默认 1）: " main_choice
+      main_choice="${main_choice:-1}"
+      case "$main_choice" in
+        1) choose_action_from_snell_menu "$default_snell_action" && return 0 ;;
+        2) choose_action_from_profile_menu && return 0 ;;
+        3) choose_action_from_bbr_menu && return 0 ;;
+        4) choose_action_from_docker_menu && return 0 ;;
+        5) choose_action_from_stls_menu && return 0 ;;
+        6) choose_action_from_client_menu && return 0 ;;
+        7) choose_action_from_script_menu && return 0 ;;
+        0) die "已取消操作" ;;
+        *) echo "输入无效，请输入 0 到 7。" ;;
       esac
     done
   else
-    if [[ "$installed" == "true" ]]; then
+    if [[ "$default_snell_action" == "update" ]]; then
       ACTION="update"
       log "检测到已安装 Snell，未指定 --action 时默认执行 update"
     else

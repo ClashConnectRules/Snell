@@ -29,6 +29,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 ## Features
 
 - Interactive action menu: `install`, `update`, or `uninstall`
+- Grouped 2-level interactive menu (by category) for easier management
 - Auto-default to `update` when an existing installation is detected
 - Interactive version selection: Snell `v4` or `v5`
 - Auto-detect architecture and download official binary
@@ -43,6 +44,7 @@ A Linux + systemd oriented Snell server deployment script with interactive insta
 - Docker deployment mode: `docker-deploy`, `docker-remove`, `docker-status`
 - ShadowTLS deployment: `stls-deploy`, `stls-status`, `stls-remove` (with interactive upstream selection)
 - Reprint client nodes at any time: `--print-client` (no reinstall needed)
+- Menu header shows runtime status and system usage (`CPU / MEM / DISK`)
 
 ## Supported Versions and Architectures
 
