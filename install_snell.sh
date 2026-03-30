@@ -538,13 +538,13 @@ resolve_action_choice() {
       read -r -p "请输入 0-7（默认 1）: " main_choice
       main_choice="${main_choice:-1}"
       case "$main_choice" in
-        1) choose_action_from_snell_menu "$default_snell_action" && return 0 ;;
-        2) choose_action_from_profile_menu && return 0 ;;
-        3) choose_action_from_bbr_menu && return 0 ;;
-        4) choose_action_from_docker_menu && return 0 ;;
-        5) choose_action_from_stls_menu && return 0 ;;
-        6) choose_action_from_client_menu && return 0 ;;
-        7) choose_action_from_script_menu && return 0 ;;
+        1) if choose_action_from_snell_menu "$default_snell_action"; then return 0; fi ;;
+        2) if choose_action_from_profile_menu; then return 0; fi ;;
+        3) if choose_action_from_bbr_menu; then return 0; fi ;;
+        4) if choose_action_from_docker_menu; then return 0; fi ;;
+        5) if choose_action_from_stls_menu; then return 0; fi ;;
+        6) if choose_action_from_client_menu; then return 0; fi ;;
+        7) if choose_action_from_script_menu; then return 0; fi ;;
         0) die "已取消操作" ;;
         *) echo "输入无效，请输入 0 到 7。" ;;
       esac
