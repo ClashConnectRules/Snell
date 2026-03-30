@@ -545,7 +545,7 @@ resolve_action_choice() {
         5) if choose_action_from_stls_menu; then return 0; fi ;;
         6) if choose_action_from_client_menu; then return 0; fi ;;
         7) if choose_action_from_script_menu; then return 0; fi ;;
-        0) die "已取消操作" ;;
+        0) ACTION="menu-exit"; return 0 ;;
         *) echo "输入无效，请输入 0 到 7。" ;;
       esac
     done
@@ -2064,8 +2064,13 @@ EOF
 }
 
 run_stls_status_flow() {
+  local stls_state
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl status shadowtls.service --no-pager || true
+    stls_state="$(unit_state 'shadowtls.service')"
+    case "$stls_state" in
+      active|inactive) systemctl status shadowtls.service --no-pager || true ;;
+      *) log "shadowtls.service 未安装" ;;
+    esac
   else
     log "未检测到 systemctl"
   fi
@@ -2233,21 +2238,7 @@ EOF
   fi
 }
 
-main() {
-  parse_args "$@"
-  need_root
-  resolve_action_choice
-
-  if [[ "$ACTION" == "install" || "$ACTION" == "update" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
-    resolve_version_choice
-  fi
-  if [[ "$ACTION" == "install" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
-    resolve_install_port
-  fi
-  if [[ "$ACTION" == "stls-deploy" ]]; then
-    resolve_stls_options
-  fi
-
+run_selected_action() {
   case "$ACTION" in
     install) run_install_flow ;;
     update) run_update_flow ;;
@@ -2271,6 +2262,51 @@ main() {
     print-client) run_print_client_flow ;;
     *) die "未知操作: $ACTION" ;;
   esac
+}
+
+resolve_action_deps() {
+  if [[ "$ACTION" == "install" || "$ACTION" == "update" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
+    resolve_version_choice
+  fi
+  if [[ "$ACTION" == "install" || "$ACTION" == "profile-add" || "$ACTION" == "docker-deploy" ]]; then
+    resolve_install_port
+  fi
+  if [[ "$ACTION" == "stls-deploy" ]]; then
+    resolve_stls_options
+  fi
+}
+
+main() {
+  local interactive_menu pause_msg
+  parse_args "$@"
+  need_root
+
+  interactive_menu="false"
+  if [[ -t 0 && -t 1 && -z "$ACTION" && "$PRINT_CLIENT" != "true" ]]; then
+    interactive_menu="true"
+  fi
+
+  if [[ "$interactive_menu" == "true" ]]; then
+    while true; do
+      ACTION=""
+      resolve_action_choice
+      if [[ "$ACTION" == "menu-exit" ]]; then
+        log "已退出菜单"
+        return 0
+      fi
+      resolve_action_deps
+      if ( run_selected_action ); then
+        pause_msg="操作完成，按回车返回主菜单..."
+      else
+        pause_msg="操作失败，按回车返回主菜单..."
+      fi
+      read -r -p "$pause_msg" _ || true
+    done
+  fi
+
+  resolve_action_choice
+  resolve_action_deps
+  run_selected_action
 }
 
 main "$@"
