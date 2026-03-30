@@ -324,7 +324,9 @@ get_stls_runtime_summary() {
 print_menu_header() {
   local title="$1"
   local runtime="$2"
-  echo
+  if [[ -t 1 ]] && command -v clear >/dev/null 2>&1; then
+    clear
+  fi
   echo "========================================"
   echo "$title"
   echo "运行: ${runtime}"
@@ -336,8 +338,8 @@ choose_action_from_snell_menu() {
   local default_action="$1"
   local default_choice prompt_hint choice
   if [[ "$default_action" == "update" ]]; then
-    default_choice="2"
-    prompt_hint="（检测到已安装，默认 2 更新）"
+    default_choice="0"
+    prompt_hint="（已安装，推荐 2 更新；默认 0 返回）"
   else
     default_choice="1"
     prompt_hint="（默认 1）"
@@ -488,6 +490,8 @@ choose_action_from_script_menu() {
 
 resolve_action_choice() {
   local default_snell_action main_choice
+  local snell_state profile_state bbr_state docker_state stls_state
+  local bbr_cc docker_brief stls_brief
 
   if [[ -z "$ACTION" && "$PRINT_CLIENT" == "true" ]]; then
     ACTION="print-client"
@@ -509,13 +513,18 @@ resolve_action_choice() {
 
   if [[ -t 0 ]]; then
     while true; do
-      print_menu_header "Snell 管理主菜单" "$(get_snell_runtime_summary)"
-      echo "类目状态:"
-      echo "  Snell: $(get_snell_runtime_summary)"
-      echo "  Profile: $(get_profile_runtime_summary)"
-      echo "  BBR: $(get_bbr_runtime_summary)"
-      echo "  Docker: $(get_docker_runtime_summary)"
-      echo "  ShadowTLS: $(get_stls_runtime_summary)"
+      snell_state="$(unit_state 'snell.service')/v$(get_installed_major)"
+      profile_state="$(count_profiles)/$(count_active_profile_services)"
+      bbr_cc="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo unknown)"
+      bbr_state="${bbr_cc}"
+      docker_brief="$(get_docker_runtime_summary)"
+      docker_state="${docker_brief#container=}"
+      docker_state="${docker_state#docker=}"
+      stls_brief="$(get_stls_runtime_summary)"
+      stls_state="${stls_brief#service=}"
+      stls_state="${stls_state%%,*}"
+      print_menu_header "Snell 管理主菜单" "$snell_state"
+      echo "类目状态: S[${snell_state}] P[${profile_state}] B[${bbr_state}] D[${docker_state}] T[${stls_state}]"
       echo
       echo "请选择类目："
       echo "  1) Snell 主服务"
