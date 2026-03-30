@@ -9,6 +9,7 @@
 适用于 Linux + systemd 的 Snell 部署脚本，内置菜单管理。
 
 - English: [README.md](./README.md)
+- 文档导航: [docs/INDEX.md](./docs/INDEX.md)
 - 中文详版: [docs/README_FULL_ZH.md](./docs/README_FULL_ZH.md)
 - English Full Docs: [docs/README_FULL.md](./docs/README_FULL.md)
 - 仓库地址: `https://github.com/ClashConnectRules/Snell.git`
@@ -74,6 +75,13 @@ sudo bash install_snell.sh --action stls-status
 sudo bash install_snell.sh --action stls-remove
 ```
 
+脚本管理：
+
+```bash
+sudo bash install_snell.sh --action script-update
+sudo bash install_snell.sh --action purge-all
+```
+
 客户端配置输出：
 
 ```bash
@@ -85,7 +93,7 @@ sudo bash install_snell.sh --print-client --name hk-a
 ## 关键参数
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
+--action <install|update|uninstall|config|restart|status|script-update|purge-all|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
 --major <4|5>
 --version <x.y.z>
 --port <port>
@@ -102,6 +110,7 @@ sudo bash install_snell.sh --print-client --name hk-a
 ```
 
 完整参数说明、示例、路径、FAQ 请看：
+- [docs/INDEX.md](./docs/INDEX.md)
 - [docs/README_FULL_ZH.md](./docs/README_FULL_ZH.md)
 
 ## 免责声明

@@ -9,6 +9,7 @@
 Linux + systemd Snell deployment script with built-in menu management.
 
 - 中文入口: [README_ZH.md](./README_ZH.md)
+- Docs Index: [docs/INDEX.md](./docs/INDEX.md)
 - Full docs (EN): [docs/README_FULL.md](./docs/README_FULL.md)
 - Full docs (ZH): [docs/README_FULL_ZH.md](./docs/README_FULL_ZH.md)
 - Repo: `https://github.com/ClashConnectRules/Snell.git`
@@ -74,6 +75,13 @@ sudo bash install_snell.sh --action stls-status
 sudo bash install_snell.sh --action stls-remove
 ```
 
+Script management:
+
+```bash
+sudo bash install_snell.sh --action script-update
+sudo bash install_snell.sh --action purge-all
+```
+
 Client output:
 
 ```bash
@@ -85,7 +93,7 @@ sudo bash install_snell.sh --print-client --name hk-a
 ## Key Arguments
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
+--action <install|update|uninstall|config|restart|status|script-update|purge-all|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
 --major <4|5>
 --version <x.y.z>
 --port <port>
@@ -102,6 +110,7 @@ sudo bash install_snell.sh --print-client --name hk-a
 ```
 
 For full parameter descriptions, examples, file paths, and FAQ, see:
+- [docs/INDEX.md](./docs/INDEX.md)
 - [docs/README_FULL.md](./docs/README_FULL.md)
 
 ## License & Disclaimer

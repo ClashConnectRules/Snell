@@ -7,6 +7,8 @@ VERSION=""
 SNELL_MAJOR=""
 ACTION=""
 REMOVE_SCRIPT="false"
+FORCE_UNINSTALL="false"
+EXIT_AFTER_ACTION="false"
 PROFILE_NAME=""
 PRINT_CLIENT="false"
 PORT=""
@@ -51,8 +53,8 @@ Snell 一键安装脚本（Linux + systemd）
   # 若检测到已安装且未指定 --action，默认走 update
 
 选项:
-  --action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
-                              选择操作（安装/更新/卸载/配置/重启/状态/脚本更新/多用户/BBR/Docker/ShadowTLS）
+  --action <install|update|uninstall|config|restart|status|script-update|purge-all|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
+                              选择操作（安装/更新/卸载/配置/重启/状态/脚本更新/彻底清理/多用户/BBR/Docker/ShadowTLS）
   --name <profile_name>       Profile 名称（多用户动作时使用）
   --print-client              仅输出当前客户端配置（不安装/不更新）
   --remove-script             卸载后删除当前脚本文件
@@ -80,6 +82,7 @@ Snell 一键安装脚本（Linux + systemd）
   sudo bash install_snell.sh --action restart
   sudo bash install_snell.sh --action status
   sudo bash install_snell.sh --action script-update
+  sudo bash install_snell.sh --action purge-all
   sudo bash install_snell.sh --action profile-add --name hk-a --major 5 --port 31001
   sudo bash install_snell.sh --action profile-list
   sudo bash install_snell.sh --action profile-remove --name hk-a
@@ -476,14 +479,16 @@ choose_action_from_client_menu() {
 choose_action_from_script_menu() {
   local choice
   while true; do
-    print_menu_header "脚本管理" "script-update=available"
+    print_menu_header "脚本管理" "update-script / purge-all"
     echo "  1) 更新本脚本"
+    echo "  2) 移除所有服务和脚本"
     echo "  0) 返回上一级"
-    read -r -p "请输入 0-1: " choice
+    read -r -p "请输入 0-2: " choice
     case "$choice" in
       1) ACTION="script-update"; return 0 ;;
+      2) ACTION="purge-all"; return 0 ;;
       0) return 1 ;;
-      *) echo "输入无效，请输入 0 或 1。" ;;
+      *) echo "输入无效，请输入 0 到 2。" ;;
     esac
   done
 }
@@ -500,8 +505,8 @@ resolve_action_choice() {
 
   if [[ -n "$ACTION" ]]; then
     case "$ACTION" in
-      install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client) return 0 ;;
-      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status/stls-deploy/stls-remove/stls-status/print-client" ;;
+      install|update|uninstall|config|restart|status|script-update|purge-all|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client) return 0 ;;
+      *) die "--action 不支持。可选: install/update/uninstall/config/restart/status/script-update/purge-all/profile-add/profile-list/profile-remove/bbr-enable/bbr-disable/bbr-status/docker-deploy/docker-remove/docker-status/stls-deploy/stls-remove/stls-status/print-client" ;;
     esac
   fi
 
@@ -2124,6 +2129,9 @@ run_stls_remove_flow() {
 }
 
 confirm_uninstall() {
+  if [[ "$FORCE_UNINSTALL" == "true" ]]; then
+    return 0
+  fi
   if [[ -t 0 ]]; then
     local answer
     read -r -p "确认卸载 Snell 并删除服务/配置/二进制？[y/N]: " answer
@@ -2132,6 +2140,27 @@ confirm_uninstall() {
       *) die "已取消卸载" ;;
     esac
   fi
+}
+
+run_purge_all_flow() {
+  local answer old_remove_script old_force_uninstall
+  old_remove_script="$REMOVE_SCRIPT"
+  old_force_uninstall="$FORCE_UNINSTALL"
+
+  if [[ -t 0 ]]; then
+    read -r -p "确认移除所有服务并删除当前脚本？[y/N]: " answer
+    case "${answer:-N}" in
+      y|Y|yes|YES) ;;
+      *) die "已取消彻底清理" ;;
+    esac
+  fi
+
+  REMOVE_SCRIPT="true"
+  FORCE_UNINSTALL="true"
+  EXIT_AFTER_ACTION="true"
+  run_uninstall_flow
+  REMOVE_SCRIPT="$old_remove_script"
+  FORCE_UNINSTALL="$old_force_uninstall"
 }
 
 cleanup_empty_parent() {
@@ -2247,6 +2276,7 @@ run_selected_action() {
     restart) run_restart_flow ;;
     status) run_status_flow ;;
     script-update) run_script_update_flow ;;
+    purge-all) run_purge_all_flow ;;
     profile-add) run_profile_add_flow ;;
     profile-list) run_profile_list_flow ;;
     profile-remove) run_profile_remove_flow ;;
@@ -2289,15 +2319,22 @@ main() {
   if [[ "$interactive_menu" == "true" ]]; then
     while true; do
       ACTION=""
+      EXIT_AFTER_ACTION="false"
       resolve_action_choice
       if [[ "$ACTION" == "menu-exit" ]]; then
         log "已退出菜单"
         return 0
       fi
       resolve_action_deps
-      if ( run_selected_action ); then
+      if run_selected_action; then
+        if [[ "$EXIT_AFTER_ACTION" == "true" ]]; then
+          return 0
+        fi
         pause_msg="操作完成，按回车返回主菜单..."
       else
+        if [[ "$EXIT_AFTER_ACTION" == "true" ]]; then
+          return 0
+        fi
         pause_msg="操作失败，按回车返回主菜单..."
       fi
       read -r -p "$pause_msg" _ || true

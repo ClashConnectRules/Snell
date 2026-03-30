@@ -130,10 +130,11 @@ sudo bash install_snell.sh --print-client --name main
 sudo bash install_snell.sh --print-client --name hk-a
 ```
 
-### Script Self-Update
+### Script Management
 
 ```bash
 sudo bash install_snell.sh --action script-update
+sudo bash install_snell.sh --action purge-all
 ```
 
 ### Pin Exact Version
@@ -146,7 +147,7 @@ sudo bash install_snell.sh --action update --version 5.0.1
 ## Arguments
 
 ```text
---action <install|update|uninstall|config|restart|status|script-update|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
+--action <install|update|uninstall|config|restart|status|script-update|purge-all|profile-add|profile-list|profile-remove|bbr-enable|bbr-disable|bbr-status|docker-deploy|docker-remove|docker-status|stls-deploy|stls-remove|stls-status|print-client>
 --name <profile_name>
 --print-client
 --remove-script
