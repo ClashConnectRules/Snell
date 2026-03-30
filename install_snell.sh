@@ -1880,7 +1880,7 @@ run_docker_status_flow() {
 }
 
 fetch_shadowtls_release_json() {
-  curl -fsSL --retry 3 --retry-delay 2 "$STLS_RELEASE_API"
+  curl -fsSL --connect-timeout 8 --max-time 25 --retry 2 --retry-delay 1 "$STLS_RELEASE_API"
 }
 
 extract_shadowtls_tag() {
@@ -1899,15 +1899,39 @@ extract_shadowtls_download_url() {
 
 install_shadowtls_binary() {
   local asset release_json release_tag download_url tmp_bin
+  local fallback_tag fallback_url proxy prefix
   asset="$(detect_shadowtls_asset)"
-  release_json="$(fetch_shadowtls_release_json)" || die "获取 ShadowTLS Release 信息失败"
-  release_tag="$(extract_shadowtls_tag "$release_json")"
-  download_url="$(extract_shadowtls_download_url "$release_json" "$asset")"
-  [[ -n "$download_url" ]] || die "未找到匹配当前架构的 ShadowTLS 二进制: ${asset}"
+  log "获取 ShadowTLS 发行信息（latest）"
+  if release_json="$(fetch_shadowtls_release_json 2>/dev/null)"; then
+    release_tag="$(extract_shadowtls_tag "$release_json")"
+    download_url="$(extract_shadowtls_download_url "$release_json" "$asset")"
+  fi
+
+  if [[ -z "$download_url" ]]; then
+    log "无法获取 latest，尝试回退到内置可用版本"
+    for fallback_tag in v0.2.25 v0.2.24 v0.2.23; do
+      fallback_url="https://github.com/ihciah/shadow-tls/releases/download/${fallback_tag}/${asset}"
+      if curl -fsSI --connect-timeout 8 --max-time 20 "$fallback_url" >/dev/null 2>&1; then
+        release_tag="$fallback_tag"
+        download_url="$fallback_url"
+        break
+      fi
+    done
+  fi
+  [[ -n "$download_url" ]] || die "获取 ShadowTLS 下载地址失败。请检查到 github.com 的网络连通性。"
 
   tmp_bin="/tmp/${asset}.$$"
   log "下载 ShadowTLS ${release_tag:-latest}: ${download_url}"
-  curl -fL --retry 3 --retry-delay 2 -o "$tmp_bin" "$download_url"
+  if ! curl -fL --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 -o "$tmp_bin" "$download_url"; then
+    log "直连下载失败，尝试代理回退"
+    for prefix in "https://mirror.ghproxy.com/" "https://ghproxy.com/"; do
+      proxy="${prefix}${download_url}"
+      if curl -fL --connect-timeout 10 --max-time 300 --retry 2 --retry-delay 1 -o "$tmp_bin" "$proxy"; then
+        break
+      fi
+    done
+  fi
+  [[ -s "$tmp_bin" ]] || die "下载 ShadowTLS 二进制失败，请稍后重试或更换网络。"
   install -m 0755 "$tmp_bin" "$STLS_BIN_PATH"
   rm -f "$tmp_bin"
   log "ShadowTLS 二进制已安装: ${STLS_BIN_PATH}"
