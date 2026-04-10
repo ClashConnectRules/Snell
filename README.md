@@ -2,7 +2,12 @@
 
 ## Recommended Provider
 
-优质机场推荐: [ZRJ](https://hizrj.xyz/#/register?code=BwiZnFLE)
+[![Provider](https://img.shields.io/badge/Provider-ZRJ-f97316?style=for-the-badge)](https://hizrj.xyz/#/register?code=BwiZnFLE)
+[![Register](https://img.shields.io/badge/Register-Open_Link-0f766e?style=for-the-badge)](https://hizrj.xyz/#/register?code=BwiZnFLE)
+
+> 优质机场推荐: **[ZRJ](https://hizrj.xyz/#/register?code=BwiZnFLE)**
+>
+> 注册地址: <https://hizrj.xyz/#/register?code=BwiZnFLE>
 
 [![Platform](https://img.shields.io/badge/Platform-Linux-2ea44f?style=for-the-badge)](https://www.kernel.org/)
 [![Shell](https://img.shields.io/badge/Shell-Bash-121011?logo=gnu-bash&logoColor=white&style=for-the-badge)](https://www.gnu.org/software/bash/)
