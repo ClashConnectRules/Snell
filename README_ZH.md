@@ -113,6 +113,10 @@ sudo bash install_snell.sh --print-client --name hk-a
 - [docs/INDEX.md](./docs/INDEX.md)
 - [docs/README_FULL_ZH.md](./docs/README_FULL_ZH.md)
 
+## 优质机场推荐
+
+- [ZRJ](https://hizrj.xyz/#/register?code=BwiZnFLE)
+
 ## 免责声明
 
 本项目仅用于合法合规场景，请遵守当地法律法规与服务商条款。
