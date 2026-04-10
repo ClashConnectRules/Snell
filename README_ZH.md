@@ -1,5 +1,9 @@
 # Snell 一键脚本
 
+## 优质机场推荐
+
+优质机场推荐: [ZRJ](https://hizrj.xyz/#/register?code=BwiZnFLE)
+
 [![Platform](https://img.shields.io/badge/Platform-Linux-2ea44f?style=for-the-badge)](https://www.kernel.org/)
 [![Shell](https://img.shields.io/badge/Shell-Bash-121011?logo=gnu-bash&logoColor=white&style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![systemd](https://img.shields.io/badge/Init-systemd-003b57?logo=systemd&logoColor=white&style=for-the-badge)](https://systemd.io/)
@@ -112,10 +116,6 @@ sudo bash install_snell.sh --print-client --name hk-a
 完整参数说明、示例、路径、FAQ 请看：
 - [docs/INDEX.md](./docs/INDEX.md)
 - [docs/README_FULL_ZH.md](./docs/README_FULL_ZH.md)
-
-## 优质机场推荐
-
-- [ZRJ](https://hizrj.xyz/#/register?code=BwiZnFLE)
 
 ## 免责声明
 
