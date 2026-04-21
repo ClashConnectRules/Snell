@@ -1,12 +1,5 @@
 # Snell 一键脚本
 
-## 优质机场推荐
-
-[![推荐机场](https://img.shields.io/badge/推荐机场-ZRJ-f97316?style=for-the-badge)](https://hizrj.xyz/#/register?code=BwiZnFLE)
-[![立即注册](https://img.shields.io/badge/立即注册-Open_Link-0f766e?style=for-the-badge)](https://hizrj.xyz/#/register?code=BwiZnFLE)
-
-> 优质机场推荐: **[ZRJ](https://hizrj.xyz/#/register?code=BwiZnFLE)**
-
 [![Platform](https://img.shields.io/badge/Platform-Linux-2ea44f?style=for-the-badge)](https://www.kernel.org/)
 [![Shell](https://img.shields.io/badge/Shell-Bash-121011?logo=gnu-bash&logoColor=white&style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![systemd](https://img.shields.io/badge/Init-systemd-003b57?logo=systemd&logoColor=white&style=for-the-badge)](https://systemd.io/)
