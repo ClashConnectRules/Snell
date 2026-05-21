@@ -8,7 +8,7 @@
 
 Linux + systemd Snell deployment script with built-in menu management.
 
-> **Subscription**: [Register here](https://hizrj.xyz/#/register?code=BwiZnFLE) to get your subscription URL for proxy nodes.
+> **Subscription**: [Register here](https://hizrj.xyz/#/register?code=qpdHySHz) to get your subscription URL for proxy nodes.
 
 - 中文入口: [README_ZH.md](./README_ZH.md)
 - Docs Index: [docs/INDEX.md](./docs/INDEX.md)
