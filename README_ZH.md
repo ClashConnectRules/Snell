@@ -8,7 +8,7 @@
 
 适用于 Linux + systemd 的 Snell 部署脚本，内置菜单管理。
 
-> **订阅推荐**：[点击注册](https://hizrj.xyz/#/register?code=BwiZnFLE) 获取订阅链接。
+> **订阅推荐**：[点击注册](https://hizrj.xyz/#/register?code=qpdHySHz) 获取订阅链接。
 
 - English: [README.md](./README.md)
 - 文档导航: [docs/INDEX.md](./docs/INDEX.md)
